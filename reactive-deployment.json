@@ -1,0 +1,25 @@
+{
+  "network": "lasna",
+  "chainId": "5318007",
+  "deployer": "0x2F914bcbAD5bf4967BbB11e4372200b7c7594AEB",
+  "contracts": {
+    "asset": "0x9F54700Ae37615C4D751FEE27138A1Cc4276e43d",
+    "poolA": "0xCa684B6C02035Bd145b5b66F46eca88e11830E38",
+    "poolB": "0x0D90622938AE7B15cAAa617325394dc30D4CF4a6",
+    "yieldMonitor": "0x1278ecD03AdCe50d4B98abf42E375101E30708e8",
+    "configManager": "0x809303cC124eABCDa2c6aFF9eefEd30EB662362a",
+    "vault": "0xACb9831e3E33580b6077FD79c1C5837272ec9e5f"
+  },
+  "transactions": {
+    "assetDeployment": "0x6fb4c365cbfd81dccf73152836355529b11a7a9b5e4bd4849e0de0306a8cf342",
+    "poolADeployment": "0x3eaf422d1975d67fc3a717a9fc1958fec7940146b17ab0b1ce13d909f85399b7",
+    "poolBDeployment": "0x11178c8a9a8df9fdcdf2806dd9c2d3d1146900ae593c2c6a63fce63e02045499",
+    "yieldMonitorDeployment": "0x7b5a40312140df96c88112433eccab6d7fcdac874c6892b50f23ed3c70024ee9",
+    "configManagerDeployment": "0xec3b81b194557c7f67736eb65a7dde6f876e422ec04f113a987ffd901549ef3d",
+    "vaultDeployment": "0x6fd0125ed3f1feb40aa8cc2a6852f133125e706dbc1e6eb77878003a922d3a69",
+    "updateYieldMonitor": "0x588d88c6df204652397d8c6eb9eb05851bb4dc2ed1f58ca20e88bf1a8261e1ad",
+    "updateConfigManager": "0x4ca63f0ff2f124ae0c80e609a0c5fdb8f84d39be19673d3606165b1ef3e670b6",
+    "mintTokens": "0xb3df058a7fc26e77e460ea5efb4c32c224bfd6d32b9dfc31da3afd92a224288c"
+  },
+  "timestamp": "2025-12-19T15:44:57.769Z"
+}

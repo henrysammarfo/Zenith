@@ -1,5 +1,7 @@
 # Zenith: Cross-Chain Yield Optimization Vault
 
+![Zenith Logo](frontend/public/logo.png)
+
 A production-grade lending automation vault powered by **Reactive Smart Contracts**. This vault autonomously rebalances liquidity between Aave V3 and Compound V2 on Ethereum Sepolia based on real-time yield signals processed on the Reactive Network (Lasna).
 
 ## Project Overview

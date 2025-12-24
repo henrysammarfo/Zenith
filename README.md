@@ -32,7 +32,12 @@ Zenith implements a "Signal Repeater" architecture to overcome cross-chain state
    ```
 2. **Reactive Monitor**:
    ```bash
-   forge script script/DeployReactive.s.sol --rpc-url https://lasna-rpc.rnk.dev/ --broadcast --legacy
+   forge create src/reactive/YieldMonitor.sol:YieldMonitor \
+     --rpc-url https://lasna-rpc.rnk.dev/ \
+     --private-key $PRIVATE_KEY \
+     --constructor-args \
+     0x0000000000000000000000000000000000000000 \
+     $POOL_A_ADDR $POOL_B_ADDR $ASSET_ADDR $VAULT_ADDR
    ```
 3. **Linking**: Call `updateYieldMonitor(address)` on the Vault with the deployed monitor address.
 
@@ -95,11 +100,11 @@ export SEPOLIA_RPC_URL=https://sepolia.infura.io/v3/your_key
 forge script script/Deploy.s.sol --rpc-url $SEPOLIA_RPC_URL --broadcast --verify
 ```
 
-### Reactive Testnet (Kopli)
+### Reactive Testnet (Lasna)
 
 ```bash
 # Set environment variables
-export REACTIVE_RPC_URL=https://kopli-rpc.rnk.dev
+export REACTIVE_RPC_URL=https://lasna-rpc.rnk.dev
 
 # Deploy Reactive YieldMonitor
 forge create src/reactive/YieldMonitor.sol:YieldMonitor \

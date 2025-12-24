@@ -36,7 +36,12 @@ Traditional cross-chain automation relies on **Keepers** (off-chain bots) or **O
 ### Phase 2: Reactive Lasna (Automation)
 1. **Deploy Yield Monitor**:
    ```bash
-   forge script script/DeployReactive.s.sol --rpc-url https://lasna-rpc.rnk.dev/ --broadcast --legacy
+   forge create src/reactive/YieldMonitor.sol:YieldMonitor \
+     --rpc-url https://lasna-rpc.rnk.dev/ \
+     --private-key $PRIVATE_KEY \
+     --constructor-args \
+     0x0000000000000000000000000000000000000000 \
+     $POOL_A_ADDR $POOL_B_ADDR $ASSET_ADDR $VAULT_ADDR
    ```
 2. **Link Vault**:
    ```bash
@@ -96,12 +101,17 @@ export PRIVATE_KEY=0x...
 3. Update `.env` with the deployed addresses.
 4. Deploy Reactive Monitor:
    ```bash
-   forge script script/DeployReactive.s.sol --rpc-url https://lasna-rpc.rnk.dev/ --broadcast --legacy
+   forge create src/reactive/YieldMonitor.sol:YieldMonitor \
+     --rpc-url https://lasna-rpc.rnk.dev/ \
+     --private-key $PRIVATE_KEY \
+     --constructor-args \
+     0x0000000000000000000000000000000000000000 \
+     $POOL_A_ADDR $POOL_B_ADDR $ASSET_ADDR $VAULT_ADDR
    ```
 
 ## Requirements Checklist Compliance
 ✅ **Reactivity**: Uses `IReactive` and `react()` to respond to log events.
 ✅ **Meaningful Use**: Automates yield optimization that would otherwise require centralized bots.
-✅ **Deployed**: Ready for Lasna/Kopli testnet deployment.
+✅ **Deployed**: Ready for Lasna testnet deployment.
 ✅ **Single Interface**: Users only interact with the `CrossChainLendingVault`.
 ✅ **Security**: Robust access controls and adversarial mitigations.

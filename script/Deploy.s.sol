@@ -15,7 +15,7 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
  */
 contract MockERC20 is ERC20 {
     constructor() ERC20("Mock Token", "MTK") {
-        _mint(msg.sender, 1000000 * 10**18);
+        _mint(msg.sender, 1000000000 * 10**18);
     }
 }
 
@@ -66,7 +66,7 @@ contract Deploy is Script {
         );
         
         // Update yield monitor with vault address
-        yieldMonitor.updateVaultAddress(address(vault));
+        yieldMonitor.setVaultAddress(address(vault));
         
         // Update config manager with vault address
         configManager.updateVaultAddress(address(vault));
@@ -128,7 +128,7 @@ contract DeployMainnet is Script {
         );
         
         // Update yield monitor with vault address
-        yieldMonitor.updateVaultAddress(address(vault));
+        yieldMonitor.setVaultAddress(address(vault));
         
         // Update config manager with vault address
         configManager.updateVaultAddress(address(vault));
@@ -190,7 +190,7 @@ contract DeploySepolia is Script {
         );
         
         // Update yield monitor with vault address
-        yieldMonitor.updateVaultAddress(address(vault));
+        yieldMonitor.setVaultAddress(address(vault));
         
         // Update config manager with vault address
         configManager.updateVaultAddress(address(vault));

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {IReactive} from "../interfaces/IReactive.sol";
+import {AbstractReactive} from "reactive-lib/abstract-base/AbstractReactive.sol";
+import {IReactive} from "reactive-lib/interfaces/IReactive.sol";
 import {IAaveLendingPool} from "../interfaces/IAaveLendingPool.sol";
 import {ICompoundLendingPool} from "../interfaces/ICompoundLendingPool.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
@@ -9,15 +10,19 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 /**
  * @title YieldMonitor
  * @dev Reactive contract that monitors lending pool yield rates and triggers rebalancing
+ * @notice Inherits from AbstractReactive for proper Lasna precompile compatibility
  */
-contract YieldMonitor is IReactive, Ownable {
+contract YieldMonitor is IReactive, AbstractReactive, Ownable {
     // Constants
     uint256 private constant SEPOLIA_CHAIN_ID = 11155111;
-    uint256 private constant CALLBACK_GAS_LIMIT = 200000;
-    uint256 private constant REBALANCE_THRESHOLD = 50; // 0.5% in basis points
+    uint256 private constant CALLBACK_GAS_LIMIT = 500000;
     uint256 private constant BLOCKS_PER_YEAR_COMPOUND = 2102400;
     uint256 private constant SECONDS_PER_YEAR = 31536000;
     uint256 private constant RAY = 1e27;
+    
+    // Topic hashes for specific subscription (Verified via CalculateTopics.s.sol)
+    uint256 private constant AAVE_YIELD_TOPIC_0 = 0x804c9b842b2748a22bb64b345453a3de7ca54a6ca45ce00d415894979e22897a;
+    uint256 private constant COMPOUND_MINT_TOPIC_0 = 0x4c209b5fc8ad50758f13e2e1088ba56a560dff690a1c6fef26394f4c03821c4f;
     
     // State variables
     address public vaultAddress;
@@ -25,6 +30,7 @@ contract YieldMonitor is IReactive, Ownable {
     ICompoundLendingPool public poolB; // Compound Pool
     address public asset;
     bool public isPaused;
+    uint256 public rebalanceThreshold; // APY difference in basis points
     
     // Yield tracking
     uint256 public lastPoolAApy;
@@ -37,177 +43,153 @@ contract YieldMonitor is IReactive, Ownable {
     event RebalanceTriggered(address indexed fromPool, address indexed toPool, uint256 amount);
     event MonitorPaused();
     event MonitorResumed();
+    event ThresholdUpdated(uint256 oldThreshold, uint256 newThreshold);
+    event TokensRescued(address token, uint256 amount);
     
     constructor(
         address _poolA,
         address _poolB,
         address _asset,
         address _vault
-    ) Ownable(msg.sender) {
+    ) payable Ownable(msg.sender) {
         poolA = IAaveLendingPool(_poolA);
         poolB = ICompoundLendingPool(_poolB);
         asset = _asset;
         vaultAddress = _vault;
         isPaused = false;
+        rebalanceThreshold = 50; // default 0.5%
         lastUpdateBlock = block.number;
+        
+        if (!vm) {
+            // Subscribe to Pool A YieldRecord events (ReserveDataUpdated)
+            service.subscribe(
+                SEPOLIA_CHAIN_ID,
+                address(poolA),
+                AAVE_YIELD_TOPIC_0,
+                REACTIVE_IGNORE,
+                REACTIVE_IGNORE,
+                REACTIVE_IGNORE
+            );
+
+            // Subscribe to Pool B Mint events
+            service.subscribe(
+                SEPOLIA_CHAIN_ID,
+                address(poolB),
+                COMPOUND_MINT_TOPIC_0,
+                REACTIVE_IGNORE,
+                REACTIVE_IGNORE,
+                REACTIVE_IGNORE
+            );
+        }
     }
+    
+    
     
     /**
      * @notice Main reactive function that processes incoming events
      */
-    function react(LogRecord calldata log) external override {
-        require(!isPaused, "YieldMonitor: Monitoring is paused");
+    function react(LogRecord calldata log) external override rnOnly {
+        if (isPaused) return;
         
-        // Check if this is a rate update event from either pool
-        if (log._contract == address(poolA) || log._contract == address(poolB)) {
-            _checkAndRebalance();
+        // If we see a relevant event, tell the Vault to check itself.
+        if (log.topic_0 == AAVE_YIELD_TOPIC_0 || log.topic_0 == COMPOUND_MINT_TOPIC_0) {
+            bytes memory payload = abi.encodeWithSignature("checkYieldsAndRebalance()");
+            // forge-lint: disable-next-line(unsafe-typecast)
+            emit Callback(SEPOLIA_CHAIN_ID, vaultAddress, uint64(CALLBACK_GAS_LIMIT), payload);
         }
-    }
-    
-    /**
-     * @notice Manually trigger yield check and potential rebalance
-     */
-    function checkYieldRates() external {
-        require(!isPaused, "YieldMonitor: Monitoring is paused");
-        _checkAndRebalance();
-    }
-    
-    /**
-     * @notice Internal function to check yields and trigger rebalancing if needed
-     */
-    function _checkAndRebalance() internal {
-        (uint256 poolAApy, uint256 poolBApy) = _getCurrentYields();
-        
-        lastPoolAApy = poolAApy;
-        lastPoolBApy = poolBApy;
-        lastUpdateBlock = block.number;
-        
-        uint256 yieldDifference = poolAApy > poolBApy ? 
-            poolAApy - poolBApy : poolBApy - poolAApy;
-        
-        emit YieldRateUpdated(poolAApy, poolBApy, yieldDifference);
-        
-        // Trigger rebalancing if difference exceeds threshold
-        if (yieldDifference >= REBALANCE_THRESHOLD) {
-            _triggerRebalance(poolAApy, poolBApy);
-        }
-    }
-    
-    /**
-     * @notice Get current yields from both pools in basis points (10000 = 100%)
-     */
-    function _getCurrentYields() internal view returns (uint256 poolAApy, uint256 poolBApy) {
-        // Aave Pool yield
-        IAaveLendingPool.ReserveData memory aaveData = poolA.getReserveData(asset);
-        poolAApy = _rayToApy(aaveData.currentLiquidityRate);
-
-        // Compound Pool yield
-        uint256 supplyRatePerBlock = poolB.supplyRatePerBlock();
-        poolBApy = _blockRateToApy(supplyRatePerBlock);
-    }
-    
-    /**
-     * @notice Convert Aave Ray rate to APY in basis points
-     */
-    function _rayToApy(uint256 rayRate) internal pure returns (uint256) {
-        return rayRate / 1e23;
     }
 
-    function _blockRateToApy(uint256 blockRate) internal pure returns (uint256) {
-        return (blockRate * BLOCKS_PER_YEAR_COMPOUND * 10000) / 1e18;
-    }
-    
-        
     /**
-     * @notice Trigger rebalancing by emitting callback event
+     * @notice Manually trigger a vault rebalance check (owner only)
+     * @dev Used for debugging cross-chain connectivity
      */
-    function _triggerRebalance(uint256 poolAApy, uint256 poolBApy) internal {
-        address fromPool = poolAApy > poolBApy ? address(poolB) : address(poolA);
-        address toPool = poolAApy > poolBApy ? address(poolA) : address(poolB);
-        
-        // Calculate rebalance amount (10% of current allocation for safety)
-        uint256 rebalanceAmount = _calculateRebalanceAmount(fromPool, toPool);
-        
-        if (rebalanceAmount > 0) {
-            bytes memory payload = abi.encodeWithSignature(
-                "rebalance(address,address,uint256)",
-                fromPool,
-                toPool,
-                rebalanceAmount
-            );
-            
-            emit Callback(
-                SEPOLIA_CHAIN_ID,
-                vaultAddress,
-                // forge-lint: disable-next-line(unsafe-typecast)
-                uint64(CALLBACK_GAS_LIMIT),
-                payload
-            );
-            
-            emit RebalanceTriggered(fromPool, toPool, rebalanceAmount);
-        }
+    function manualTrigger() external onlyOwner {
+        bytes memory payload = abi.encodeWithSignature("checkYieldsAndRebalance()");
+        // forge-lint: disable-next-line(unsafe-typecast)
+        emit Callback(SEPOLIA_CHAIN_ID, vaultAddress, uint64(CALLBACK_GAS_LIMIT), payload);
     }
     
     /**
-     * @notice Calculate amount to rebalance between pools
+     * @notice Check current yields and trigger rebalance if threshold exceeded
      */
-    function _calculateRebalanceAmount(address /* fromPool */, address /* toPool */) internal view returns (uint256) {
-        // Rebalance 10% of total allocation
-        return totalAllocated / 10;
-    }
+    
+    // ==================== Admin Functions ====================
     
     /**
-     * @notice Pause monitoring (emergency function)
+     * @notice Pause the monitor
      */
-    function pause() external {
+    function pause() external onlyOwner {
         isPaused = true;
         emit MonitorPaused();
     }
-
-    function ownerPause(bool paused) external onlyOwner {
-        isPaused = paused;
-        if (paused) {
-            emit MonitorPaused();
-        } else {
-            emit MonitorResumed();
-        }
-    }
     
     /**
-     * @notice Resume monitoring
+     * @notice Resume the monitor
      */
-    function resume() external {
+    function resume() external onlyOwner {
         isPaused = false;
         emit MonitorResumed();
     }
     
     /**
-     * @notice Update vault address
+     * @notice Update the rebalance threshold
+     * @param newThreshold New threshold in basis points
      */
-    function setTotalAllocated(uint256 amount) external onlyOwner {
-        totalAllocated = amount;
+    function setRebalanceThreshold(uint256 newThreshold) external onlyOwner {
+        uint256 oldThreshold = rebalanceThreshold;
+        rebalanceThreshold = newThreshold;
+        emit ThresholdUpdated(oldThreshold, newThreshold);
     }
-
-    function updateVaultAddress(address newVault) external onlyOwner {
+    
+    /**
+     * @notice Update the vault address
+     * @param newVault New vault address
+     */
+    function setVaultAddress(address newVault) external onlyOwner {
+        require(newVault != address(0), "Invalid vault address");
         vaultAddress = newVault;
     }
     
     /**
-     * @notice Get current yield data
+     * @notice Update the total allocated amount
+     * @param amount New total allocated amount
      */
-    function getCurrentYieldData() external view returns (uint256 poolAApy, uint256 poolBApy, uint256 difference) {
-        (poolAApy, poolBApy) = _getCurrentYields();
-        difference = poolAApy > poolBApy ? poolAApy - poolBApy : poolBApy - poolAApy;
+    function updateTotalAllocated(uint256 amount) external onlyOwner {
+        totalAllocated = amount;
     }
     
     /**
-     * @notice Pay function required by IPayer interface
+     * @notice Emergency rescue of stuck tokens
+     * @param token Token address (use address(0) for native token)
+     * @param amount Amount to rescue
      */
-    function pay(uint256 amount) external override {
-        // Implementation for payment functionality
-        payable(msg.sender).transfer(amount);
+    function rescueTokens(address token, uint256 amount) external onlyOwner {
+        if (token == address(0)) {
+            payable(msg.sender).transfer(amount);
+        } else {
+            (bool success, ) = token.call(
+                abi.encodeWithSignature("transfer(address,uint256)", msg.sender, amount)
+            );
+            require(success, "Token rescue failed");
+        }
+        emit TokensRescued(token, amount);
     }
     
-    // Receive function for ETH payments
-    receive() external payable {}
+    /**
+     * @notice Get current pool yields
+     */
+    
+    /**
+     * @notice Manually trigger a yield check (for testing)
+     */
+    /**
+     * @notice Manually trigger a yield check (for testing)
+     */
+
+    /**
+     * @notice Check if the contract thinks it is in a VM
+     */
+    function getVmStatus() external view returns (bool) {
+        return vm;
+    }
 }

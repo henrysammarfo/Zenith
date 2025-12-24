@@ -38,7 +38,7 @@ contract CrossChainLendingVaultTest is Test {
         
         vault = new CrossChainLendingVault(address(asset), address(poolA), address(poolB), yieldMonitorAddr, "Windsurf Vault", "WSV");
         
-        yieldMonitor.updateVaultAddress(address(vault));
+        yieldMonitor.setVaultAddress(address(vault));
 
         asset.mint(address(this), 1000 ether);
         asset.mint(user1, 1000 ether);
@@ -84,10 +84,11 @@ contract CrossChainLendingVaultTest is Test {
         // 10% of 50 ether is 5 ether.
         uint256 rebalanceAmount = 5 ether;
 
-        vm.expectEmit(true, true, true, true);
+        // Rebalanced(address indexed fromPool, address indexed toPool, uint256 amount)
+        vm.expectEmit(true, true, false, true, address(vault));
         emit Rebalanced(address(poolB), address(poolA), rebalanceAmount);
 
         vm.prank(yieldMonitorAddr);
-        vault.rebalance(address(poolB), address(poolA), rebalanceAmount);
+        vault.rebalance(yieldMonitorAddr, address(poolB), address(poolA), rebalanceAmount);
     }
 }

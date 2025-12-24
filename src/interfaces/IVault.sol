@@ -27,6 +27,12 @@ interface IVault {
 
     function getYieldData() external view returns (YieldData memory);
     function getPoolAllocations() external view returns (PoolAllocation[] memory);
+    function rebalance(address sender, address fromPool, address toPool, uint256 amount) external;
+    
+    /**
+     * @notice Check yields and rebalance if necessary (called by YieldMonitor)
+     */
+    function checkYieldsAndRebalance() external;
     
     event Deposited(address indexed user, uint256 amount, uint256 shares);
     event Withdrawn(address indexed user, uint256 amount, uint256 shares);

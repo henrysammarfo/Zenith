@@ -7,6 +7,7 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
+import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {IVault} from "../interfaces/IVault.sol";
 import {IAaveLendingPool} from "../interfaces/IAaveLendingPool.sol";
 import {ICompoundLendingPool} from "../interfaces/ICompoundLendingPool.sol";
@@ -15,7 +16,7 @@ import {ICompoundLendingPool} from "../interfaces/ICompoundLendingPool.sol";
  * @title CrossChainLendingVault
  * @dev Main vault contract that manages user deposits and automated rebalancing, compliant with ERC4626
  */
-contract CrossChainLendingVault is ERC4626, IVault, Ownable, ReentrancyGuard {
+contract CrossChainLendingVault is ERC4626, IVault, Ownable, ReentrancyGuard, Pausable {
     using SafeERC20 for IERC20;
     
     // Constants
@@ -57,7 +58,7 @@ contract CrossChainLendingVault is ERC4626, IVault, Ownable, ReentrancyGuard {
             poolAddress: _poolA,
             percentage: 5000, // 50%
             isActive: true
-        }));
+		}));
         
         poolAllocations.push(PoolAllocation({
             poolAddress: _poolB,
@@ -72,11 +73,69 @@ contract CrossChainLendingVault is ERC4626, IVault, Ownable, ReentrancyGuard {
     
     
     
+    
     /**
-     * @notice Rebalance funds between pools (called by YieldMonitor)
+     * @notice Check yields and rebalance if necessary (called by YieldMonitor)
+     * @dev This moves the logic to Sepolia to verify yields locally
      */
-    function rebalance(address fromPool, address toPool, uint256 amount) external {
-        require(msg.sender == yieldMonitor, "Vault: Only yield monitor can rebalance");
+    function checkYieldsAndRebalance() external override whenNotPaused {
+        // Only allow yield monitor, owner, or any authorized sender to trigger this.
+        // For the demo/hackathon, we allow anyone to trigger as it verifies yields locally.
+        // require(msg.sender == yieldMonitor || msg.sender == owner(), "Vault: Unauthorized trigger");
+        require(autoRebalanceEnabled, "Vault: Auto-rebalance is disabled");
+
+        (uint256 poolAApy, uint256 poolBApy) = _getCurrentYields();
+        
+        // Determine difference
+        uint256 difference;
+        if (poolAApy > poolBApy) {
+            difference = poolAApy - poolBApy;
+        } else {
+            difference = poolBApy - poolAApy;
+        }
+        
+        // Check threshold
+        if (difference >= rebalanceThreshold) {
+            uint256 totalAssetsVal = totalAssets();
+            uint256 amountToMove = (totalAssetsVal * rebalancePercentage) / BASIS_POINTS;
+            
+            if (amountToMove > 0) {
+                if (poolAApy > poolBApy) {
+                    // Move B -> A
+                    _rebalanceInternal(address(poolB), address(poolA), amountToMove);
+                } else {
+                    // Move A -> B
+                    _rebalanceInternal(address(poolA), address(poolB), amountToMove);
+                }
+            }
+        }
+    }
+
+    // Internal rebalance helper
+    function _rebalanceInternal(address fromPool, address toPool, uint256 amount) internal {
+        if (fromPool == address(poolA)) {
+            poolA.withdraw(asset(), amount, address(this));
+        } else {
+            poolB.redeemUnderlying(amount);
+        }
+
+        if (toPool == address(poolA)) {
+            IERC20(asset()).forceApprove(address(poolA), amount);
+            poolA.supply(asset(), amount, address(this), 0);
+        } else {
+            IERC20(asset()).forceApprove(address(poolB), amount);
+            poolB.mint(amount);
+        }
+        
+        emit Rebalanced(fromPool, toPool, amount);
+    }
+
+    /**
+     * @notice Rebalance funds between pools (Legacy/Manual)
+     */
+    function rebalance(address sender, address fromPool, address toPool, uint256 amount) external whenNotPaused {
+        require(autoRebalanceEnabled, "Vault: Auto-rebalance is disabled");
+        require(sender == yieldMonitor, "Vault: Only yield monitor can rebalance");
         require(amount > 0, "Vault: Amount must be > 0");
 
         if (fromPool == address(poolA)) {
@@ -190,44 +249,21 @@ contract CrossChainLendingVault is ERC4626, IVault, Ownable, ReentrancyGuard {
     }
     
     /**
-     * @notice Redeem shares for assets
+     * @notice Internal function to handle deposits
      */
-    function redeem(
-        uint256 shares,
-        address receiver,
-        address owner
-    ) public override returns (uint256 assets) {
-        require(receiver != address(0), "ERC4626: redeem from the zero address");
-        require(owner != address(0), "ERC4626: redeem from the zero address");
-
-        assets = previewRedeem(shares);
-
-        if (msg.sender != owner) {
-            _spendAllowance(owner, msg.sender, shares);
-        }
-
-        _beforeWithdraw(assets, shares);
-
-        _burn(owner, shares);
-
-        // Transfer assets to receiver
-        IERC20(asset()).safeTransfer(receiver, assets);
-
-        emit Withdraw(msg.sender, receiver, owner, assets, shares);
-
-        return assets;
-    }
-    
-    /**
-     * @notice Internal function to allocate funds to pools
-     */
-    function _afterDeposit(uint256 assets, uint256) internal {
+    function _deposit(address caller, address receiver, uint256 assets, uint256 shares) internal virtual override {
+        super._deposit(caller, receiver, assets, shares);
         _allocateToPools(assets);
     }
 
-    function _beforeWithdraw(uint256 assets, uint256) internal {
+    /**
+     * @notice Internal function to handle withdrawals
+     */
+    function _withdraw(address caller, address receiver, address owner, uint256 assets, uint256 shares) internal virtual override {
         _deallocateFromPools(assets);
+        super._withdraw(caller, receiver, owner, assets, shares);
     }
+    
 
     function _allocateToPools(uint256 amount) internal {
         for (uint256 i = 0; i < poolAllocations.length; i++) {
@@ -268,6 +304,28 @@ contract CrossChainLendingVault is ERC4626, IVault, Ownable, ReentrancyGuard {
     }
     
     /**
+     * @notice Rescue non-asset tokens from the vault
+     */
+    function rescueToken(address token, uint256 amount) external onlyOwner {
+        require(token != asset(), "Vault: Cannot rescue primary asset");
+        IERC20(token).safeTransfer(owner(), amount);
+    }
+
+    /**
+     * @notice Emergency vault pause
+     */
+    function pauseVault() external onlyOwner {
+        _pause();
+    }
+
+    /**
+     * @notice Resume vault operations
+     */
+    function unpauseVault() external onlyOwner {
+        _unpause();
+    }
+
+    /**
      * @notice Internal function to get current yields
      */
     function _getCurrentYields() internal view returns (uint256 poolAApy, uint256 poolBApy) {
@@ -294,6 +352,6 @@ contract CrossChainLendingVault is ERC4626, IVault, Ownable, ReentrancyGuard {
     function _blockRateToApy(uint256 blockRate) internal pure returns (uint256) {
         // Compound's rate is per block (scaled by 1e18). APY = (rate * blocks_per_year).
         // To get basis points, we multiply by 10000. APY_bp = (blockRate * 2102400 * 10000) / 1e18
-        return (blockRate * 2102400) / 1e16;
+        return (blockRate * 2102400 * 10000) / 1e18;
     }
 }

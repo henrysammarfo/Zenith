@@ -7,6 +7,7 @@ import {MockAavePool} from "../src/mocks/MockAavePool.sol";
 import {MockCompoundPool} from "../src/mocks/MockCompoundPool.sol";
 import {CrossChainLendingVault} from "../src/core/CrossChainLendingVault.sol";
 import {SimpleERC20} from "../src/ERC20.sol";
+import {IReactive} from "reactive-lib/interfaces/IReactive.sol"; // Import LogRecord
 
 contract YieldMonitorTest is Test {
     YieldMonitor public yieldMonitor;
@@ -18,8 +19,8 @@ contract YieldMonitorTest is Test {
     address public owner = address(0x1);
     address public user1 = address(0x2);
     
-    event YieldRateUpdated(uint256 poolAApy, uint256 poolBApy, uint256 difference);
-    event RebalanceTriggered(address indexed fromPool, address indexed toPool, uint256 amount);
+    // Define Callback event explicitly to match IReactive.sol exactly
+    event Callback(uint256 indexed chainId, address indexed _contract, uint64 indexed gasLimit, bytes payload);
     
     function setUp() public {
         vm.startPrank(owner);
@@ -29,57 +30,58 @@ contract YieldMonitorTest is Test {
         poolA = new MockAavePool(address(asset));
         poolB = new MockCompoundPool(address(asset));
         
+        // Etch the service address so detectVm() sets vm = false
+        vm.etch(address(0x0000000000000000000000000000000000fffFfF), hex"00");
+        
         yieldMonitor = new YieldMonitor(address(poolA), address(poolB), address(asset), address(0));
         vault = new CrossChainLendingVault(address(asset), address(poolA), address(poolB), address(yieldMonitor), "Windsurf Vault", "WSV");
 
-        yieldMonitor.updateVaultAddress(address(vault));
+        yieldMonitor.setVaultAddress(address(vault));
         
         asset.mint(user1, 1000 ether);
 
         vm.stopPrank();
     }
     
-    function testYieldRateUpdateAndRebalance() public {
-        vm.startPrank(user1);
-        asset.approve(address(vault), 100 ether);
-        vault.deposit(100 ether, user1);
-        vm.stopPrank();
-
-        vm.startPrank(owner);
-        yieldMonitor.setTotalAllocated(100 ether);
-        vm.stopPrank();
-
-        poolA.setLiquidityRate(600 * 1e23); // 6%
+    function testReactTrigger() public {
+        // Test that a relevant log triggers the Callback event
         
+        vm.startPrank(address(0xdeadbeef)); // Simulate reactive network caller
+        
+        uint256 aaveYieldTopic0 = 0x804c9b842b2748a22bb64b345453a3de7ca54a6ca45ce00d415894979e22897a;
+        
+        IReactive.LogRecord memory log = IReactive.LogRecord({
+            chain_id: 11155111,
+            _contract: address(poolA),
+            topic_0: aaveYieldTopic0,
+            topic_1: 0,
+            topic_2: 0,
+            topic_3: 0,
+            data: hex"",
+            block_number: 0,
+            op_code: 0,
+            block_hash: 0,
+            tx_hash: 0,
+            log_index: 0
+        });
+
+        // Expect the Callback event to be emitted
         vm.expectEmit(true, true, true, true);
-        emit RebalanceTriggered(address(poolB), address(poolA), 10 ether);
-        yieldMonitor.checkYieldRates();
+        bytes memory expectedPayload = abi.encodeWithSignature("checkYieldsAndRebalance()");
+        emit Callback(11155111, address(vault), 500000, expectedPayload);
         
-        assertEq(yieldMonitor.lastPoolAApy(), 600);
-        assertEq(yieldMonitor.lastPoolBApy(), 500);
-    }
-
-    function testNoRebalanceBelowThreshold() public {
-        poolA.setLiquidityRate(501 * 1e23); // 5.01%
+        yieldMonitor.react(log);
         
-        yieldMonitor.checkYieldRates();
-        
-        assertEq(yieldMonitor.lastPoolAApy(), 501);
-        assertEq(yieldMonitor.lastPoolBApy(), 500);
+        vm.stopPrank();
     }
 
     function testPauseAndResume() public {
         vm.startPrank(owner);
-        yieldMonitor.ownerPause(true);
+        yieldMonitor.pause();
         assertTrue(yieldMonitor.isPaused());
 
-        vm.expectRevert("YieldMonitor: Monitoring is paused");
-        yieldMonitor.checkYieldRates();
-
-        yieldMonitor.ownerPause(false);
+        yieldMonitor.resume();
         assertFalse(yieldMonitor.isPaused());
-
-        yieldMonitor.checkYieldRates();
         vm.stopPrank();
     }
 }

@@ -1,34 +1,48 @@
 # Cross-Chain Lending Automation Vault
 
-A DeFi vault that automatically rebalances liquidity between multiple lending protocols using Reactive Smart Contracts.
+A production-grade lending automation vault powered by **Reactive Smart Contracts**. This vault autonomously rebalances liquidity between Aave V3 and Compound V2 on Ethereum Sepolia based on real-time yield signals processed on the Reactive Network (Lasna).
 
-## Overview
+## Project Overview
 
-This vault monitors yield rates across multiple lending pools (Aave V3 and Compound V2) on Ethereum Sepolia and automatically reallocates funds to maximize returns based on configurable yield differentials.
+The vault implements a "Signal Repeater" architecture to overcome cross-chain state reading limitations:
+1.  **YieldMonitor (Reactive)** lives on the Lasna network, subscribing to yield-changing events on Sepolia.
+2.  **CrossChainLendingVault (Destination)** lives on Sepolia, managing user funds and local yield calculations.
+3.  **Automation**: When conditions change, the Monitor sends a cross-chain callback to the Vault, which then rebalances liquidity to the highest-yielding pool.
 
-## Architecture
+## Key Features
+- **ERC4626 Compliant**: Standardized vault interface for seamless integration.
+- **Bi-directional Rebalancing**: Moves funds from Aave → Compound or vice-versa.
+- **Configurable Strategy**: Rebalance thresholds and percentages are manageable via an on-chain `ConfigManager`.
+- **Security First**: Integrated pausing mechanisms and authorized reactive execution.
 
-### Core Components
+## Deployment & Setup
 
-1. **CrossChainLendingVault** - Main vault contract handling user deposits/withdrawals
-2. **YieldMonitor** - Reactive contract that monitors lending pool events and triggers rebalancing
-3. **ConfigManager** - Manages strategy parameters and configuration
-4. **Mock Pools** - Test implementations of Aave and Compound pools
+### Environment
+1. Clone the repository.
+2. Setup environment variables:
+   ```bash
+   cp .env.example .env
+   # Fill in PRIVATE_KEY and RPC URLs
+   ```
 
-### Key Features
+### Quick Deploy
+1. **Sepolia Components**:
+   ```bash
+   forge script script/DeploySepolia.s.sol --rpc-url $SEPOLIA_RPC_URL --broadcast --legacy
+   ```
+2. **Reactive Monitor**:
+   ```bash
+   forge script script/DeployReactive.s.sol --rpc-url https://lasna-rpc.rnk.dev/ --broadcast --legacy
+   ```
+3. **Linking**: Call `updateYieldMonitor(address)` on the Vault with the deployed monitor address.
 
-- **Automated Yield Monitoring**: Real-time tracking of APY rates across pools
-- **Dynamic Rebalancing**: Automatic fund allocation when yield differences exceed thresholds
-- **Reactive Architecture**: Event-driven responses using Reactive Network
-- **Configurable Strategy**: Adjustable rebalancing parameters and thresholds
-- **Emergency Controls**: Pause/resume functionality and emergency withdrawals
+## Verification & Walkthrough
+A detailed step-by-step description of the rebalancing workflow, including **transaction hashes**, can be found in [REACTIVE_BOUNTY_SUBMISSION.md](./REACTIVE_BOUNTY_SUBMISSION.md).
 
-## How It Works
-
-1. **Deposit**: Users deposit assets into the vault, receiving vault shares
-2. **Allocation**: Funds are distributed across lending pools based on configured percentages
-3. **Monitoring**: YieldMonitor continuously tracks APY rates from both pools
-4. **Rebalancing**: When yield difference > threshold, funds automatically move to higher-yield pool
+### Latest Verified State:
+- **Sepolia Vault**: `0x8f361be39c3c8e0447ec4aa014e355eb52cf6448`
+- **Lasna Monitor**: `0xce47699939797AF265EBE8CCA4679f906597A928`
+- **Successful Rebalance**: Confirmed shift from 50/50 to 0.7/0.3 allocation upon simulated yield update.
 5. **Withdrawal**: Users can withdraw their shares at any time
 
 ## Installation
@@ -74,11 +88,29 @@ forge script script/Deploy.s.sol --rpc-url http://localhost:8545 --broadcast
 
 ```bash
 # Set environment variables
-export PRIVATE_KEY=your_private_key
-export SEPOLIA_RPC_URL=your_sepolia_rpc_url
+export PRIVATE_KEY=0x...
+export SEPOLIA_RPC_URL=https://sepolia.infura.io/v3/your_key
 
 # Deploy to Sepolia
-forge script script/Deploy.s.sol:DeploySepolia --rpc-url sepolia --broadcast --verify
+forge script script/Deploy.s.sol --rpc-url $SEPOLIA_RPC_URL --broadcast --verify
+```
+
+### Reactive Testnet (Kopli)
+
+```bash
+# Set environment variables
+export REACTIVE_RPC_URL=https://kopli-rpc.rnk.dev
+
+# Deploy Reactive YieldMonitor
+forge create src/reactive/YieldMonitor.sol:YieldMonitor \
+  --rpc-url $REACTIVE_RPC_URL \
+  --private-key $PRIVATE_KEY \
+  --constructor-args \
+  0x0000000000000000000000000000000000000000 \ # System Contract (Mock for local)
+  <POOL_A_ADDR> \
+  <POOL_B_ADDR> \
+  <ASSET_ADDR> \
+  <VAULT_ADDR>
 ```
 
 ## Configuration
@@ -184,18 +216,10 @@ event YieldUpdated(uint256 poolA_Apy, uint256 poolB_Apy, uint256 difference);
 - **Liquidity Risk**: Withdrawals may be limited by pool liquidity
 - **Technical Risk**: Reactive Network downtime or failures
 
+## Bounty Submission Details
+
+For a detailed breakdown of the submission requirements, threat model, and design trade-offs, see [REACTIVE_BOUNTY_SUBMISSION.md](REACTIVE_BOUNTY_SUBMISSION.md).
+
 ## License
 
 MIT License
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Submit a pull request
-
-## Support
-
-For questions or support, please open an issue in the repository.

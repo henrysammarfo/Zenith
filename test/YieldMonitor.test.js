@@ -74,8 +74,8 @@ describe("YieldMonitor", function () {
       await yieldMonitor.checkYieldRates();
 
       // Verify last update values
-      expect(await yieldMonitor.lastPoolA_Apy()).to.be.closeTo(600, 5);
-      expect(await yieldMonitor.lastPoolB_Apy()).to.be.closeTo(500, 5);
+      expect(await yieldMonitor.lastPoolAApy()).to.be.closeTo(600, 5);
+      expect(await yieldMonitor.lastPoolBApy()).to.be.closeTo(500, 5);
     });
 
     it("Should not trigger rebalancing below threshold", async function () {
@@ -95,7 +95,7 @@ describe("YieldMonitor", function () {
   describe("Pause/Resume", function () {
     it("Should allow pausing and resuming", async function () {
       // Pause monitoring
-      await yieldMonitor.ownerPause(true);
+      await yieldMonitor.pause();
       expect(await yieldMonitor.isPaused()).to.equal(true);
 
       // Should reject yield checks while paused
@@ -103,7 +103,7 @@ describe("YieldMonitor", function () {
         .to.be.revertedWith("YieldMonitor: Monitoring is paused");
 
       // Resume monitoring
-      await yieldMonitor.ownerPause(false);
+      await yieldMonitor.resume();
       expect(await yieldMonitor.isPaused()).to.equal(false);
 
       // Should work after resume

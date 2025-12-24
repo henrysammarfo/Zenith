@@ -1,7 +1,9 @@
-# Cross-Chain Lending Automation Vault - Reactive Bounties 2.0 Submission
+# Zenith: Cross-Chain Yield Optimization Vault
+ - Reactive Bounties 2.0 Submission
 
 ## Overview
-This project implements a production-grade cross-chain lending automation vault using Reactive Smart Contracts. It autonomously monitors yield rates across multiple lending protocols (Aave V3 and Compound V2 mocks) on Ethereum Sepolia and reallocates liquidity to the highest-yielding pool using trustless cross-chain callbacks.
+Zenith implements a "Signal Repeater" architecture to overcome cross-chain state reading limitations:
+It autonomously monitors yield rates across multiple lending protocols (Aave V3 and Compound V2 mocks) on Ethereum Sepolia and reallocates liquidity to the highest-yielding pool using trustless cross-chain callbacks.
 
 ## Why Reactive Contracts?
 

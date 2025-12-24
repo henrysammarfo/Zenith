@@ -48,6 +48,27 @@ A detailed step-by-step description of the rebalancing workflow, including **tra
 - **Sepolia Vault**: `0x8f361be39c3c8e0447ec4aa014e355eb52cf6448`
 - **Lasna Monitor**: `0xce47699939797AF265EBE8CCA4679f906597A928`
 - **Successful Rebalance**: Confirmed shift from 50/50 to 0.7/0.3 allocation upon simulated yield update.
+
+---
+
+## 🖥 Frontend Dapp (Zenith UI)
+
+The project includes a premium, "shoe-brand" inspired frontend for monitoring and managing your vaults.
+
+### Tech Stack
+- **Framework**: Vite + React
+- **Animations**: Framer Motion
+- **Styling**: Tailwind CSS
+
+### Getting Started
+1. `cd frontend`
+2. `npm install`
+3. `npm run dev`
+
+### Features
+- **Wallet-Auth**: Connect your wallet to access the private dashboard.
+- **Yield Monitoring**: Real-time stats and allocation breakdown.
+- **Reactive Actions**: Manual rebalance triggers and deposit/withdraw controls.
 5. **Withdrawal**: Users can withdraw their shares at any time
 
 ## Installation

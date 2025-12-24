@@ -1,0 +1,47 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Orbitron:wght@400;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-zenith-950 text-zenith-silver antialiased selection:bg-white selection:text-black;
+    font-family: 'Inter', sans-serif;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-bold tracking-tight text-white;
+  }
+}
+
+@layer components {
+  .premium-card {
+    @apply bg-zenith-900/50 backdrop-blur-md border border-white/10 rounded-2xl p-6 transition-all duration-300 hover:border-white/30;
+  }
+
+  .premium-button {
+    @apply relative inline-flex items-center justify-center px-8 py-3 overflow-hidden font-medium transition duration-300 ease-out border-2 border-white rounded-full shadow-md group;
+  }
+
+  .premium-button span {
+    @apply absolute inset-0 flex items-center justify-center w-full h-full text-black duration-300 -translate-x-full bg-white group-hover:translate-x-0 ease;
+  }
+
+  .premium-button-text {
+    @apply absolute flex items-center justify-center w-full h-full text-white transition-all duration-300 transform group-hover:translate-x-full ease;
+  }
+
+  .glass-nav {
+    @apply fixed top-0 w-full z-50 bg-black/50 backdrop-blur-lg border-b border-white/5;
+  }
+}
+
+/* Custom Gradients */
+.text-gradient {
+  @apply bg-clip-text text-transparent bg-gradient-to-br from-white via-zenith-silver to-zenith-800;
+}
+
+.mesh-bg {
+  background: radial-gradient(circle at 50% 50%, rgba(30, 41, 59, 0.5) 0%, rgba(2, 6, 23, 1) 100%);
+}

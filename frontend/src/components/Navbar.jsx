@@ -1,10 +1,13 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Wallet, LogOut, Menu, X, ShieldCheck } from "lucide-react";
+import { Menu, X, ShieldCheck } from "lucide-react";
+import { ConnectButton } from '@rainbow-me/rainbowkit';
+import { useAccount } from "wagmi";
 import { cn } from "../lib/utils";
 
-export default function Navbar({ onConnect, walletAddress, onDisconnect }) {
+export default function Navbar() {
+    const { isConnected } = useAccount();
     const [isScrolled, setIsScrolled] = useState(false);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const location = useLocation();
@@ -17,16 +20,15 @@ export default function Navbar({ onConnect, walletAddress, onDisconnect }) {
         return () => window.removeEventListener("scroll", handleScroll);
     }, []);
 
-    const navLinks = [
-        { name: "Alpha", path: "/" },
-        { name: "Vaults", path: "/vaults" },
-        { name: "Strategy", path: "/strategy" },
-    ];
+    const navLinks = isConnected ? [
+        { name: "Home", path: "/" },
+        { name: "Dashboard", path: "/dashboard" },
+    ] : [];
 
     return (
         <nav
             className={cn(
-                "fixed top-0 w-full z-50 transition-all duration-500 py-4",
+                "fixed top-0 w-full z-[100] transition-all duration-500 py-4",
                 isScrolled ? "bg-black/80 backdrop-blur-xl border-b border-white/10" : "bg-transparent"
             )}
         >
@@ -38,7 +40,6 @@ export default function Navbar({ onConnect, walletAddress, onDisconnect }) {
                     <span className="font-orbit text-2xl font-bold tracking-widest text-white uppercase">Zenith</span>
                 </Link>
 
-                {/* Desktop Nav */}
                 <div className="hidden md:flex items-center gap-8">
                     {navLinks.map((link) => (
                         <Link
@@ -53,46 +54,104 @@ export default function Navbar({ onConnect, walletAddress, onDisconnect }) {
                         </Link>
                     ))}
 
-                    {walletAddress ? (
-                        <div className="flex items-center gap-4 pl-4 border-l border-white/10">
-                            <div className="flex flex-col items-end">
-                                <span className="text-[10px] text-zenith-silver/40 uppercase font-bold tracking-tighter">Connected Account</span>
-                                <span className="text-xs font-mono text-white tracking-widest">
-                                    {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
-                                </span>
-                            </div>
-                            <button
-                                onClick={onDisconnect}
-                                className="w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center transition-colors group"
-                                title="Disconnect"
-                            >
-                                <LogOut className="w-4 h-4 text-white/60 group-hover:text-white transition-colors" />
-                            </button>
-                        </div>
-                    ) : (
-                        <button
-                            onClick={onConnect}
-                            className="premium-button min-w-[160px]"
-                        >
-                            <span className="font-bold tracking-widest uppercase text-xs">Login Now</span>
-                            <div className="premium-button-text gap-2">
-                                <Wallet className="w-4 h-4" />
-                                <span className="font-bold tracking-widest uppercase text-xs">Connect</span>
-                            </div>
-                        </button>
-                    )}
+                    <ConnectButton.Custom>
+                        {({
+                            account,
+                            chain,
+                            openAccountModal,
+                            openChainModal,
+                            openConnectModal,
+                            mounted,
+                        }) => {
+                            const ready = mounted;
+                            const connected = ready && account && chain;
+
+                            return (
+                                <div
+                                    {...(!ready && {
+                                        'aria-hidden': true,
+                                        'style': {
+                                            opacity: 0,
+                                            pointerEvents: 'none',
+                                            userSelect: 'none',
+                                        },
+                                    })}
+                                >
+                                    {(() => {
+                                        if (!connected) {
+                                            return (
+                                                <button
+                                                    onClick={openConnectModal}
+                                                    type="button"
+                                                    className="relative h-12 px-10 rounded-xl bg-white text-black font-black text-[12px] uppercase tracking-widest hover:bg-zenith-silver hover:scale-[1.02] transition-all shadow-[0_0_30px_rgba(255,255,255,0.2)] overflow-hidden group"
+                                                >
+                                                    <span className="relative z-10">Connect Wallet</span>
+                                                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+                                                </button>
+                                            );
+                                        }
+
+                                        if (chain.unsupported) {
+                                            return (
+                                                <button onClick={openChainModal} type="button" className="px-5 py-2.5 rounded-xl bg-red-500 text-white text-[11px] font-bold uppercase tracking-widest hover:bg-red-600 transition-colors shadow-lg shadow-red-500/20">
+                                                    Wrong Network
+                                                </button>
+                                            );
+                                        }
+
+                                        return (
+                                            <div style={{ display: 'flex', gap: 12 }}>
+                                                <button
+                                                    onClick={openChainModal}
+                                                    style={{ display: 'flex', alignItems: 'center' }}
+                                                    type="button"
+                                                    className="px-4 py-2.5 rounded-xl bg-white text-black text-[11px] font-black uppercase tracking-widest hover:bg-zenith-silver transition-all shadow-lg"
+                                                >
+                                                    {chain.hasIcon && (
+                                                        <div
+                                                            style={{
+                                                                background: chain.iconBackground,
+                                                                width: 14,
+                                                                height: 14,
+                                                                borderRadius: 999,
+                                                                overflow: 'hidden',
+                                                                marginRight: 6,
+                                                                border: '1px solid rgba(0,0,0,0.1)'
+                                                            }}
+                                                        >
+                                                            {chain.iconUrl && (
+                                                                <img
+                                                                    alt={chain.name ?? 'Chain icon'}
+                                                                    src={chain.iconUrl}
+                                                                    style={{ width: 14, height: 14 }}
+                                                                />
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                    {chain.name}
+                                                </button>
+
+                                                <button
+                                                    onClick={openAccountModal}
+                                                    type="button"
+                                                    className="px-6 py-3 rounded-xl bg-white text-black font-black text-[12px] uppercase tracking-widest hover:bg-zenith-silver transition-all shadow-lg"
+                                                >
+                                                    {account.displayName}
+                                                </button>
+                                            </div>
+                                        );
+                                    })()}
+                                </div>
+                            );
+                        }}
+                    </ConnectButton.Custom>
                 </div>
 
-                {/* Mobile Toggle */}
-                <button
-                    className="md:hidden text-white"
-                    onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                >
+                <button className="md:hidden text-white" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
                     {mobileMenuOpen ? <X /> : <Menu />}
                 </button>
             </div>
 
-            {/* Mobile Menu */}
             <AnimatePresence>
                 {mobileMenuOpen && (
                     <motion.div
@@ -102,24 +161,36 @@ export default function Navbar({ onConnect, walletAddress, onDisconnect }) {
                         className="md:hidden absolute top-full left-0 w-full bg-black border-b border-white/10 p-6 flex flex-col gap-6"
                     >
                         {navLinks.map((link) => (
-                            <Link
-                                key={link.name}
-                                to={link.path}
-                                onClick={() => setMobileMenuOpen(false)}
-                                className="text-lg font-bold tracking-widest uppercase text-white"
-                            >
+                            <Link key={link.name} to={link.path} onClick={() => setMobileMenuOpen(false)} className="text-lg font-bold tracking-widest uppercase text-white">
                                 {link.name}
                             </Link>
                         ))}
-                        {!walletAddress && (
-                            <button onClick={() => { onConnect(); setMobileMenuOpen(false); }} className="premium-button w-full">
-                                <span className="font-bold tracking-widest uppercase text-xs">Login Now</span>
-                                <div className="premium-button-text gap-2">
-                                    <Wallet className="w-4 h-4" />
-                                    <span className="font-bold tracking-widest uppercase text-xs">Connect</span>
-                                </div>
-                            </button>
-                        )}
+                        <div className="flex justify-center mt-4">
+                            <ConnectButton.Custom>
+                                {({ account, chain, openConnectModal, mounted }) => {
+                                    const ready = mounted;
+                                    const connected = ready && account && chain;
+                                    if (!connected) {
+                                        return (
+                                            <button
+                                                onClick={openConnectModal}
+                                                className="w-full h-12 rounded-xl bg-white text-black font-bold text-xs uppercase tracking-widest shadow-lg"
+                                            >
+                                                Connect Wallet
+                                            </button>
+                                        );
+                                    }
+                                    return (
+                                        <button
+                                            onClick={() => openConnectModal()}
+                                            className="w-full h-12 rounded-xl bg-white/10 border border-white/20 text-white font-bold text-xs uppercase tracking-widest"
+                                        >
+                                            {account.displayName}
+                                        </button>
+                                    );
+                                }}
+                            </ConnectButton.Custom>
+                        </div>
                     </motion.div>
                 )}
             </AnimatePresence>

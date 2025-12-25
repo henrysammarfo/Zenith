@@ -1,59 +1,47 @@
-import { useState, useEffect } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import { useAccount, useDisconnect } from "wagmi";
 import Navbar from "./components/Navbar";
 import Hero from "./components/Hero";
 import AuthGuard from "./components/AuthGuard";
 import Dashboard from "./components/Dashboard";
+import Faucet from "./pages/Faucet";
 
 function App() {
-  const [walletAddress, setWalletAddress] = useState(null);
-
-  // Mock Wallet Connection
-  const connectWallet = () => {
-    // Simulate a connection
-    const mockAddress = "0x8f361be3...6448";
-    setWalletAddress(mockAddress);
-    localStorage.setItem("zenith_wallet", mockAddress);
-  };
-
-  const disconnectWallet = () => {
-    setWalletAddress(null);
-    localStorage.removeItem("zenith_wallet");
-  };
-
-  useEffect(() => {
-    const saved = localStorage.getItem("zenith_wallet");
-    if (saved) setWalletAddress(saved);
-  }, []);
+  const { address, isConnected } = useAccount();
+  const { disconnect } = useDisconnect();
 
   return (
     <Router>
       <div className="min-h-screen bg-zenith-950 selection:bg-white selection:text-black">
         <Navbar
-          walletAddress={walletAddress}
-          onConnect={connectWallet}
-          onDisconnect={disconnectWallet}
+          walletAddress={address}
+          onDisconnect={() => disconnect()}
         />
 
         <Routes>
           <Route path="/" element={
-            walletAddress ? <Navigate to="/dashboard" /> : <Hero onStart={connectWallet} />
+            isConnected ? <Navigate to="/dashboard" /> : <Hero />
           } />
 
           <Route path="/dashboard" element={
-            <AuthGuard walletAddress={walletAddress}>
+            <AuthGuard walletAddress={address}>
               <Dashboard />
             </AuthGuard>
           } />
 
-          {/* Fallback */}
+          <Route path="/faucet" element={<Faucet />} />
+
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
 
-        <footer className="py-20 border-t border-white/5 mt-20">
-          <div className="container mx-auto px-6 text-center">
-            <span className="text-[10px] font-bold tracking-[0.4em] uppercase text-white/20">
-              Zenith Protocol &copy; 2024 &mdash; The Standard of Cross-Chain Automation
+        <footer className="py-20 border-t border-white/5 mt-20 bg-black/40 backdrop-blur-3xl relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-t from-white/5 to-transparent pointer-events-none" />
+          <div className="container mx-auto px-6 text-center relative z-10">
+            <span className="text-[11px] font-black tracking-[0.4em] uppercase text-white mb-4 block drop-shadow-lg">
+              The Zenith of Autonomous Yield
+            </span>
+            <span className="text-[10px] font-bold tracking-[0.4em] uppercase text-white/90">
+              Zenith Protocol &copy; 2025
             </span>
           </div>
         </footer>

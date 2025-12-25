@@ -33,7 +33,7 @@ contract YieldMonitorTest is Test {
         // Etch the service address so detectVm() sets vm = false
         vm.etch(address(0x0000000000000000000000000000000000fffFfF), hex"00");
         
-        yieldMonitor = new YieldMonitor(address(poolA), address(poolB), address(asset), address(0));
+        yieldMonitor = new YieldMonitor(address(0), address(poolA), address(poolB), address(asset), address(0));
         vault = new CrossChainLendingVault(address(asset), address(poolA), address(poolB), address(yieldMonitor), "Windsurf Vault", "WSV");
 
         yieldMonitor.setVaultAddress(address(vault));

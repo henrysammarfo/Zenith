@@ -47,6 +47,7 @@ contract YieldMonitor is IReactive, AbstractReactive, Ownable {
     event TokensRescued(address token, uint256 amount);
     
     constructor(
+        address /* _systemContract */, // Commented out to silence warning, kept for 5-arg compatibility
         address _poolA,
         address _poolB,
         address _asset,

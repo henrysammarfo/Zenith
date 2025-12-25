@@ -4,20 +4,24 @@
     "description": "Cross-chain lending automation vault using Reactive Smart Contracts",
     "main": "index.js",
     "scripts": {
-        "build": "hardhat compile",
-        "test": "hardhat test",
-        "deploy:local": "hardhat run scripts/deploy.js --network localhost",
-        "deploy:sepolia": "hardhat run scripts/deploy.js --network sepolia",
-        "node": "hardhat node"
+        "build": "forge build && npm run build --prefix frontend",
+        "test": "forge test",
+        "node": "anvil"
     },
     "devDependencies": {
-        "@nomicfoundation/hardhat-toolbox": "^4.0.0",
         "@openzeppelin/contracts": "^5.0.0",
-        "hardhat": "^2.19.0",
-        "dotenv": "^16.3.1"
+        "autoprefixer": "^10.4.23",
+        "dotenv": "^16.3.1",
+        "postcss": "^8.5.6",
+        "tailwindcss": "^4.1.18"
     },
     "dependencies": {
-        "@openzeppelin/contracts": "^5.0.0"
+        "@openzeppelin/contracts": "^5.0.0",
+        "clsx": "^2.1.1",
+        "framer-motion": "^12.23.26",
+        "lucide-react": "^0.562.0",
+        "react-router-dom": "^7.11.0",
+        "tailwind-merge": "^3.4.0"
     },
     "keywords": [
         "solidity",

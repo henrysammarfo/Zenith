@@ -33,7 +33,7 @@ contract CrossChainLendingVaultTest is Test {
         poolA = new MockAavePool(address(asset));
         poolB = new MockCompoundPool(address(asset));
         
-        yieldMonitor = new YieldMonitor(address(poolA), address(poolB), address(asset), address(0));
+        yieldMonitor = new YieldMonitor(address(0), address(poolA), address(poolB), address(asset), address(0));
         yieldMonitorAddr = address(yieldMonitor);
         
         vault = new CrossChainLendingVault(address(asset), address(poolA), address(poolB), yieldMonitorAddr, "Windsurf Vault", "WSV");

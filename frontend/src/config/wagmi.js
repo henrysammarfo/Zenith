@@ -4,24 +4,10 @@ import {
 } from '@rainbow-me/rainbowkit';
 import { sepolia } from 'wagmi/chains';
 
-// Custom Lasna Chain
-export const lasna = {
-    id: 20240813,
-    name: 'Lasna',
-    iconUrl: 'https://raw.githubusercontent.com/henrysammarfo/Zenith/main/logo.png',
-    iconBackground: '#fff',
-    nativeCurrency: { name: 'Reactive', symbol: 'REACT', decimals: 18 },
-    rpcUrls: {
-        default: { http: ['https://lasna-rpc.rnk.dev'] },
-    },
-    blockExplorers: {
-        default: { name: 'Blockscout', url: 'https://lasna-explorer.rnk.dev' },
-    },
-};
-
+// Project uses Sepolia only - Lasna (Reactive) is backend automation layer
 export const config = getDefaultConfig({
     appName: 'Zenith',
-    projectId: '3f044738550186586036815372338029', // Reown Public Demo ID
-    chains: [sepolia, lasna],
+    projectId: '33e7ea13aff389061aaf7e51c69dff4c', // Zenith WalletConnect Project
+    chains: [sepolia],
     ssr: false,
 });

@@ -1,20 +1,22 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { TrendingUp, Activity, Percent, ExternalLink, ShieldCheck, Wallet, ArrowDown } from "lucide-react";
-import { useReadContract, useWriteContract, useAccount, useBalance, useWaitForTransactionReceipt } from "wagmi";
-import { formatUnits, parseUnits } from "viem";
+import { TrendingUp, Activity, Percent, ExternalLink, ShieldCheck, Wallet, ArrowDown, RefreshCw } from "lucide-react";
+import { useReadContract, useWriteContract, useAccount, useWaitForTransactionReceipt, usePublicClient } from "wagmi";
+import { formatUnits, parseUnits, parseAbiItem } from "viem";
 import { ZENITH_VAULT_ADDRESS, ASSET_ADDRESS, VAULT_ABI, ERC20_ABI } from "../config/constants";
 import { cn } from "../lib/utils";
-
 import { useNavigate } from "react-router-dom";
 
 export default function Dashboard() {
     const { address } = useAccount();
     const navigate = useNavigate();
+    const publicClient = usePublicClient();
     const [amount, setAmount] = useState("");
     const [activeTab, setActiveTab] = useState("deposit");
     const [isProcessing, setIsProcessing] = useState(false);
     const [txHash, setTxHash] = useState(null);
+    const [activities, setActivities] = useState([]);
+    const [isLoadingActivities, setIsLoadingActivities] = useState(false);
 
     // Read Vault Total Balance / TVL
     const { data: totalAssets, refetch: refetchVault } = useReadContract({
@@ -66,6 +68,81 @@ export default function Dashboard() {
         hash: txHash,
     });
 
+    // Fetch real activity logs from blockchain
+    const fetchActivities = useCallback(async () => {
+        if (!publicClient || !address) return;
+        setIsLoadingActivities(true);
+
+        try {
+            const currentBlock = await publicClient.getBlockNumber();
+            const fromBlock = currentBlock - BigInt(10000); // Last ~10k blocks
+
+            // Fetch Deposit events for this user
+            const depositLogs = await publicClient.getLogs({
+                address: ZENITH_VAULT_ADDRESS,
+                event: parseAbiItem('event Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares)'),
+                args: { sender: address },
+                fromBlock: fromBlock > 0n ? fromBlock : 0n,
+                toBlock: 'latest',
+            });
+
+            // Fetch Withdraw events for this user
+            const withdrawLogs = await publicClient.getLogs({
+                address: ZENITH_VAULT_ADDRESS,
+                event: parseAbiItem('event Withdraw(address indexed sender, address indexed receiver, address indexed owner, uint256 assets, uint256 shares)'),
+                args: { sender: address },
+                fromBlock: fromBlock > 0n ? fromBlock : 0n,
+                toBlock: 'latest',
+            });
+
+            // Fetch all Rebalanced events (protocol-wide)
+            const rebalanceLogs = await publicClient.getLogs({
+                address: ZENITH_VAULT_ADDRESS,
+                event: parseAbiItem('event Rebalanced(address indexed fromPool, address indexed toPool, uint256 amount)'),
+                fromBlock: fromBlock > 0n ? fromBlock : 0n,
+                toBlock: 'latest',
+            });
+
+            // Combine and format all events
+            const allActivities = [
+                ...depositLogs.map(log => ({
+                    type: "Deposit",
+                    status: "Confirmed",
+                    hash: log.transactionHash,
+                    blockNumber: log.blockNumber,
+                    val: `+${formatUnits(log.args.assets || 0n, 18)} MTK`,
+                })),
+                ...withdrawLogs.map(log => ({
+                    type: "Withdraw",
+                    status: "Confirmed",
+                    hash: log.transactionHash,
+                    blockNumber: log.blockNumber,
+                    val: `-${formatUnits(log.args.assets || 0n, 18)} MTK`,
+                })),
+                ...rebalanceLogs.map(log => ({
+                    type: "Rebalance",
+                    status: "Optimized",
+                    hash: log.transactionHash,
+                    blockNumber: log.blockNumber,
+                    val: `${formatUnits(log.args.amount || 0n, 18)} MTK moved`,
+                })),
+            ];
+
+            // Sort by block number descending (newest first)
+            allActivities.sort((a, b) => Number(b.blockNumber) - Number(a.blockNumber));
+
+            setActivities(allActivities.slice(0, 10)); // Show last 10
+        } catch (e) {
+            console.error("Failed to fetch activities:", e);
+            setActivities([]);
+        }
+        setIsLoadingActivities(false);
+    }, [publicClient, address]);
+
+    useEffect(() => {
+        fetchActivities();
+    }, [fetchActivities, address]);
+
     useEffect(() => {
         if (isTxConfirmed) {
             refetchVault();
@@ -74,6 +151,7 @@ export default function Dashboard() {
             refetchMtk();
             refetchZth();
             refetchAllowance();
+            fetchActivities(); // Refresh activity log
             setIsProcessing(false);
             setTxHash(null);
             setAmount("");
@@ -83,14 +161,14 @@ export default function Dashboard() {
     const stats = [
         {
             label: "Total Value Locked (TVL)",
-            val: totalAssets ? `${formatUnits(totalAssets, 18)} MTK` : "0.00 MTK",
-            change: "VARIFIED",
+            val: totalAssets ? `${parseFloat(formatUnits(totalAssets, 18)).toFixed(2)} MTK` : "0.00 MTK",
+            change: "VERIFIED",
             icon: TrendingUp
         },
         {
             label: "Current Yield (APY)",
-            val: yieldData ? `${(Number(yieldData[0]) / 100).toFixed(2)}%` : "0.00%",
-            change: yieldData ? `${(Number(yieldData[3]) / 100).toFixed(2)}% DIFF` : "...",
+            val: yieldData ? `${(Number(yieldData.poolAApy) / 100).toFixed(2)}%` : "0.00%",
+            change: yieldData ? `${(Number(yieldData.yieldDifference) / 100).toFixed(2)}% DIFF` : "...",
             icon: Percent
         },
         {
@@ -160,6 +238,11 @@ export default function Dashboard() {
             console.error(e);
             setIsProcessing(false);
         }
+    };
+
+    const formatHash = (hash) => {
+        if (!hash) return "";
+        return `${hash.slice(0, 10)}...${hash.slice(-4)}`;
     };
 
     return (
@@ -260,7 +343,7 @@ export default function Dashboard() {
 
                         <div className="space-y-10 flex-grow">
                             {allocations?.map((pool, i) => (
-                                <div key={pool.pool} className="space-y-4">
+                                <div key={i} className="space-y-4">
                                     <div className="flex justify-between items-end">
                                         <div className="flex items-center gap-3">
                                             <div className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center font-orbit font-bold text-xs text-white/60">
@@ -270,8 +353,8 @@ export default function Dashboard() {
                                                 <div className="text-sm font-bold text-white mb-0.5 uppercase tracking-widest">
                                                     {i === 0 ? "MockAaveProtocol" : "MockCompoundProtocol"}
                                                 </div>
-                                                <div className="text-xl font-orbit font-bold text-white/40 tracking-tighter">
-                                                    {formatUnits(pool.amount, 18)} MTK
+                                                <div className="text-xs font-mono text-white/30 tracking-tighter">
+                                                    {pool.poolAddress?.slice(0, 10)}...{pool.poolAddress?.slice(-4)}
                                                 </div>
                                             </div>
                                         </div>
@@ -305,7 +388,7 @@ export default function Dashboard() {
                                     <div className="text-xs font-bold text-white uppercase tracking-widest">Autonomous Rebalancing</div>
                                     <div className="text-[9px] text-white/30 uppercase tracking-[0.2em] mt-1 max-w-sm">
                                         The Reactive Network automatically migrates liquidity to the highest-yielding protocol.
-                                        {yieldData && <span className="text-white/60 ml-2">Currently targeting: {Number(yieldData[0]) > Number(yieldData[1]) ? "Pool A" : "Pool B"}</span>}
+                                        {yieldData && <span className="text-white/60 ml-2">Currently targeting: {Number(yieldData.poolAApy) > Number(yieldData.poolBApy) ? "Pool A" : "Pool B"}</span>}
                                     </div>
                                 </div>
                             </div>
@@ -351,7 +434,7 @@ export default function Dashboard() {
                                     <div className="flex justify-between">
                                         <span className="text-[9px] font-bold uppercase tracking-widest text-white/30">Target Amount</span>
                                         <span className="text-[9px] font-bold uppercase tracking-widest text-white/50">
-                                            Balance: {activeTab === "deposit" ? (mtkBalance ? formatUnits(mtkBalance, 18) : "0.00") : (zthBalance ? formatUnits(zthBalance, 18) : "0.00")} {activeTab === "deposit" ? "MTK (Asset)" : "ZTH (Shares)"}
+                                            Balance: {activeTab === "deposit" ? (mtkBalance ? parseFloat(formatUnits(mtkBalance, 18)).toFixed(2) : "0.00") : (zthBalance ? parseFloat(formatUnits(zthBalance, 18)).toFixed(2) : "0.00")} {activeTab === "deposit" ? "MTK" : "ZTH"}
                                         </span>
                                     </div>
                                     <div className="relative group">
@@ -363,7 +446,7 @@ export default function Dashboard() {
                                             className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-4 text-xl font-orbit font-bold text-white placeholder:text-white/10 focus:outline-none focus:border-white/30 transition-all"
                                         />
                                         <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-white/20 uppercase tracking-widest group-focus-within:text-white/40 transition-colors">
-                                            {activeTab === "deposit" ? "MTK (Asset)" : "ZTH (Shares)"}
+                                            {activeTab === "deposit" ? "MTK" : "ZTH"}
                                         </span>
                                     </div>
                                 </div>
@@ -379,7 +462,7 @@ export default function Dashboard() {
                                     </div>
                                     <div className="h-[1px] bg-white/5" />
                                     <div className="flex justify-between items-center text-xs">
-                                        <span className="font-bold uppercase tracking-widest text-white/40 font-orbit">Estimated {activeTab === "deposit" ? "ZTH (Shares)" : "MTK (Asset)"}</span>
+                                        <span className="font-bold uppercase tracking-widest text-white/40 font-orbit">Estimated {activeTab === "deposit" ? "ZTH" : "MTK"}</span>
                                         <span className="font-bold text-white font-orbit">{amount || "0.00"}</span>
                                     </div>
                                 </div>
@@ -390,10 +473,10 @@ export default function Dashboard() {
                             <button
                                 onClick={handleAction}
                                 disabled={!amount || isProcessing}
-                                className="relative w-full h-14 rounded-xl bg-white text-black font-black text-xs uppercase tracking-widest hover:bg-zenith-silver hover:scale-[1.01] transition-all shadow-xl flex items-center justify-center gap-2 group"
+                                className="relative w-full h-14 rounded-xl bg-white text-black font-black text-xs uppercase tracking-widest hover:bg-zenith-silver hover:scale-[1.01] transition-all shadow-xl flex items-center justify-center gap-2 group disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 <span>
-                                    {isProcessing ? "Processing..." : (activeTab === "deposit" ? (allowance < parseUnits(amount || "0", 18) ? "Authorize MTK" : "Deposit MTK") : "Redeem ZTH")}
+                                    {isProcessing ? "Processing..." : (activeTab === "deposit" ? ((!allowance || allowance < parseUnits(amount || "0", 18)) ? "Authorize MTK" : "Deposit MTK") : "Redeem ZTH")}
                                 </span>
                                 <Wallet className="w-4 h-4" />
                             </button>
@@ -404,7 +487,7 @@ export default function Dashboard() {
                     </motion.div>
                 </div>
 
-                {/* System Ledger */}
+                {/* Real-Time Activity Ledger */}
                 <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -414,73 +497,70 @@ export default function Dashboard() {
                     <div className="flex items-center justify-between mb-8">
                         <div>
                             <h3 className="text-xs font-bold tracking-[0.3em] uppercase text-white/40 flex items-center gap-2">
-                                <Wallet className="w-3 h-3 text-white/20" /> Institutional Activity Ledger
+                                <Wallet className="w-3 h-3 text-white/20" /> Activity Ledger
                             </h3>
-                            <div className="text-[9px] text-white/20 uppercase tracking-widest mt-1">Real-time status tracking for all protocol operations</div>
+                            <div className="text-[9px] text-white/20 uppercase tracking-widest mt-1">Real-time on-chain transaction history</div>
                         </div>
                         <div className="flex items-center gap-4">
+                            <button
+                                onClick={fetchActivities}
+                                disabled={isLoadingActivities}
+                                className="flex items-center gap-2 px-3 py-1 rounded bg-white/5 border border-white/10 hover:bg-white/10 transition-colors"
+                            >
+                                <RefreshCw className={cn("w-3 h-3", isLoadingActivities && "animate-spin")} />
+                                <span className="text-[9px] font-bold text-white/60 uppercase tracking-widest">Refresh</span>
+                            </button>
                             <div className="hidden md:flex items-center gap-2 px-3 py-1 rounded bg-green-500/5 border border-green-500/10">
                                 <div className="w-1 h-1 rounded-full bg-green-500" />
-                                <span className="text-[9px] font-bold text-green-500/80 uppercase tracking-widest">System Operational</span>
+                                <span className="text-[9px] font-bold text-green-500/80 uppercase tracking-widest">Live</span>
                             </div>
                         </div>
                     </div>
 
                     <div className="space-y-3">
-                        {[
-                            { type: "Rebalance", status: "Verified", hash: "0xe18d38f3...76cb", time: "2h ago", val: "+0.4% APY" },
-                            { type: "Yield Audit", status: "Complete", hash: "0x0956a0b7...8ad8", time: "5h ago", val: "Acknowledge" },
-                            { type: "Allocation Shift", status: "Optimized", hash: "0x30a8518b...41e0", time: "1d ago", val: "Comp -> Aave" },
-                        ].map((tx, i) => (
-                            <div key={i} className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/5 hover:border-white/10 transition-all duration-300 group cursor-default">
-                                <div className="flex items-center gap-5">
-                                    <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center group-hover:bg-white group-hover:text-black transition-all duration-500">
-                                        <ArrowDown className={cn("w-4 h-4", i === 2 ? "rotate-90" : "rotate-180")} />
-                                    </div>
-                                    <div>
-                                        <div className="text-[11px] font-bold text-white uppercase tracking-widest mb-0.5">{tx.type}</div>
-                                        <div className="text-[9px] text-white/20 font-mono tracking-tighter group-hover:text-white/40 transition-colors uppercase">{tx.hash}</div>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-10">
-                                    <div className="text-right hidden md:block">
-                                        <div className="text-[9px] font-bold text-white/40 uppercase tracking-widest mb-0.5">{tx.val}</div>
-                                        <div className="text-[9px] text-white/20 uppercase tracking-widest font-bold">{tx.status} • {tx.time}</div>
-                                    </div>
-                                    <a
-                                        href={`https://sepolia.etherscan.io/tx/${tx.hash}`}
-                                        target="_blank"
-                                        className="w-10 h-10 rounded-xl border border-white/10 flex items-center justify-center hover:bg-white hover:text-black transition-all duration-500"
-                                        rel="noreferrer"
-                                    >
-                                        <ExternalLink className="w-3.5 h-3.5" />
-                                    </a>
-                                </div>
+                        {isLoadingActivities ? (
+                            <div className="text-center py-12 text-white/20 uppercase tracking-[0.3em] animate-pulse">
+                                Fetching on-chain events...
                             </div>
-                        ))}
+                        ) : activities.length === 0 ? (
+                            <div className="text-center py-12">
+                                <div className="text-white/10 uppercase tracking-[0.3em] mb-4">No recent activity</div>
+                                <p className="text-[10px] text-white/20 uppercase tracking-widest">
+                                    Deposit, redeem, or trigger a rebalance to see your transactions here.
+                                </p>
+                            </div>
+                        ) : (
+                            activities.map((tx, i) => (
+                                <div key={i} className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/5 hover:border-white/10 transition-all duration-300 group cursor-default">
+                                    <div className="flex items-center gap-5">
+                                        <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center group-hover:bg-white group-hover:text-black transition-all duration-500">
+                                            <ArrowDown className={cn("w-4 h-4", tx.type === "Withdraw" ? "" : "rotate-180", tx.type === "Rebalance" && "rotate-90")} />
+                                        </div>
+                                        <div>
+                                            <div className="text-[11px] font-bold text-white uppercase tracking-widest mb-0.5">{tx.type}</div>
+                                            <div className="text-[9px] text-white/20 font-mono tracking-tighter group-hover:text-white/40 transition-colors">{formatHash(tx.hash)}</div>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-10">
+                                        <div className="text-right hidden md:block">
+                                            <div className="text-[9px] font-bold text-white/40 uppercase tracking-widest mb-0.5">{tx.val}</div>
+                                            <div className="text-[9px] text-white/20 uppercase tracking-widest font-bold">{tx.status} • Block #{tx.blockNumber?.toString()}</div>
+                                        </div>
+                                        <a
+                                            href={`https://sepolia.etherscan.io/tx/${tx.hash}`}
+                                            target="_blank"
+                                            className="w-10 h-10 rounded-xl border border-white/10 flex items-center justify-center hover:bg-white hover:text-black transition-all duration-500"
+                                            rel="noreferrer"
+                                        >
+                                            <ExternalLink className="w-3.5 h-3.5" />
+                                        </a>
+                                    </div>
+                                </div>
+                            ))
+                        )}
                     </div>
                 </motion.div>
             </div>
         </div>
     );
-}
-
-function ShareBalance({ address }) {
-    const { data } = useReadContract({
-        address: ZENITH_VAULT_ADDRESS,
-        abi: VAULT_ABI,
-        functionName: "balanceOf",
-        args: [address],
-    });
-    return data ? `${formatUnits(data, 18)} ZTH` : "0.00 ZTH";
-}
-
-function TokenBalance({ address }) {
-    const { data } = useReadContract({
-        address: ASSET_ADDRESS,
-        abi: ERC20_ABI,
-        functionName: "balanceOf",
-        args: [address],
-    });
-    return data ? `${formatUnits(data, 18)} MTK` : "0.00 MTK";
 }

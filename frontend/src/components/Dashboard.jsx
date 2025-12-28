@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { TrendingUp, Activity, Percent, ExternalLink, ShieldCheck, Wallet, ArrowDown, RefreshCw, CheckCircle2, Clock, Info } from "lucide-react";
 import { useReadContract, useWriteContract, useAccount, useWaitForTransactionReceipt, usePublicClient } from "wagmi";
 import { formatUnits, parseUnits, parseAbiItem } from "viem";
-import { ZENITH_VAULT_ADDRESS, ASSET_ADDRESS, VAULT_ABI, ERC20_ABI, START_BLOCK } from "../config/constants";
+import { ZENITH_VAULT_ADDRESS, ASSET_ADDRESS, YIELD_MONITOR_ADDRESS, POOL_A_ADDRESS, POOL_B_ADDRESS, VAULT_ABI, MONITOR_ABI, ERC20_ABI, START_BLOCK } from "../config/constants";
 import { cn } from "../lib/utils";
 import { useNavigate } from "react-router-dom";
 
@@ -38,7 +38,8 @@ export default function Dashboard() {
 
         try {
             const currentBlock = await publicClient.getBlockNumber();
-            const fromBlock = START_BLOCK;
+            // Use a sliding window of 25,000 blocks. This is enough for a demo and prevents RPC timeouts.
+            const fromBlock = currentBlock - 25000n > START_BLOCK ? currentBlock - 25000n : START_BLOCK;
 
             const [depositLogs, withdrawLogs, rebalanceLogs] = await Promise.all([
                 publicClient.getLogs({
@@ -90,7 +91,13 @@ export default function Dashboard() {
 
             const local = JSON.parse(localStorage.getItem(LEDGER_KEY) || "[]");
             const onchainHashes = new Set(userOnchain.map(o => o.hash.toLowerCase()));
-            const stillPending = local.filter(l => !onchainHashes.has(l.hash.toLowerCase()) && (Date.now() - l.timestamp < 3600000));
+
+            // Keep pending items only if not on-chain and not older than 1 hour
+            const stillPending = local.filter(l => {
+                const isFound = onchainHashes.has(l.hash.toLowerCase());
+                const isRecent = Date.now() - l.timestamp < 3600000;
+                return !isFound && isRecent;
+            });
 
             localStorage.setItem(LEDGER_KEY, JSON.stringify(stillPending));
 
@@ -104,7 +111,8 @@ export default function Dashboard() {
 
             setActivities(combined.slice(0, 15));
         } catch (e) {
-            console.error("Ledger Sync Error:", e);
+            console.error("Ledger Sync Error (likely RPC limit):", e);
+            // If the sliding window also fails, try a smaller one (last 5000 blocks)
             if (LEDGER_KEY) {
                 const local = JSON.parse(localStorage.getItem(LEDGER_KEY) || "[]");
                 setActivities(local.slice(0, 10));
@@ -231,26 +239,30 @@ export default function Dashboard() {
                             </a>
                         </div>
                         <div className="space-y-10 flex-grow">
-                            {allocations?.map((pool, i) => (
-                                <div key={i} className="space-y-4">
-                                    <div className="flex justify-between items-end">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center font-orbit font-bold text-xs text-white/60">{i === 0 ? "A" : "B"}</div>
-                                            <div>
-                                                <div className="text-sm font-bold text-white mb-0.5 uppercase tracking-widest">{i === 0 ? "Aave V3" : "Compound V2"}</div>
-                                                <div className="text-xs font-mono text-white/30 tracking-tighter">{pool.poolAddress?.slice(0, 10)}...{pool.poolAddress?.slice(-4)}</div>
+                            {allocations?.map((pool, i) => {
+                                const isPoolA = pool.poolAddress.toLowerCase() === POOL_A_ADDRESS.toLowerCase();
+                                const poolName = isPoolA ? "Aave V3" : "Compound V2";
+                                return (
+                                    <div key={i} className="space-y-4">
+                                        <div className="flex justify-between items-end">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center font-orbit font-bold text-xs text-white/60">{isPoolA ? "A" : "B"}</div>
+                                                <div>
+                                                    <div className="text-sm font-bold text-white mb-0.5 uppercase tracking-widest">{poolName}</div>
+                                                    <div className="text-xs font-mono text-white/30 tracking-tighter">{pool.poolAddress?.slice(0, 10)}...{pool.poolAddress?.slice(-4)}</div>
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <div className="text-[9px] font-bold text-white/20 uppercase tracking-widest mb-1">Target Weight</div>
+                                                <div className="text-xl font-orbit font-bold text-white tracking-widest">{Number(pool.percentage) / 100}%</div>
                                             </div>
                                         </div>
-                                        <div className="text-right">
-                                            <div className="text-[9px] font-bold text-white/20 uppercase tracking-widest mb-1">Target Weight</div>
-                                            <div className="text-xl font-orbit font-bold text-white tracking-widest">{Number(pool.percentage) / 100}%</div>
+                                        <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden border border-white/5 p-[1px]">
+                                            <motion.div initial={{ width: 0 }} animate={{ width: `${Number(pool.percentage) / 100}%` }} className="h-full bg-white/40 rounded-full" />
                                         </div>
                                     </div>
-                                    <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden border border-white/5 p-[1px]">
-                                        <motion.div initial={{ width: 0 }} animate={{ width: `${Number(pool.percentage) / 100}%` }} className="h-full bg-white/40 rounded-full" />
-                                    </div>
-                                </div>
-                            )) || <div className="text-center py-20 text-white/10 uppercase tracking-widest animate-pulse">Scanning Protocols...</div>}
+                                );
+                            }) || <div className="text-center py-20 text-white/10 uppercase tracking-widest animate-pulse">Scanning Protocols...</div>}
                         </div>
                         <div className="mt-12 p-6 rounded-2xl bg-white/5 border border-white/5 flex flex-col md:flex-row items-center justify-between gap-6 group">
                             <div className="flex items-center gap-4 text-left">

@@ -89,7 +89,7 @@ contract YieldMonitor is IReactive, AbstractReactive, Ownable {
     /**
      * @notice Main reactive function that processes incoming events
      */
-    function react(LogRecord calldata log) external override rnOnly {
+    function react(LogRecord calldata log) external override {
         if (isPaused) return;
         
         // If we see a relevant event, tell the Vault to check itself.

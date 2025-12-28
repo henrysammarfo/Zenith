@@ -1,7 +1,8 @@
 export const ZENITH_VAULT_ADDRESS = "0xF09c1e34a25583569C352434ADB870aCd014A1D1";
 export const YIELD_MONITOR_ADDRESS = "0x0d951b817754C4326aF2C1A81Dc459aa071401bA";
 export const ASSET_ADDRESS = "0x99b73Eee17e17553C824FCBC694fd01F31908193";
-export const START_BLOCK = 7352000n; // Vault deployment block on Sepolia
+export const START_BLOCK = 7000000n; // Much safer range for Sepolia deployment
+
 
 
 // Proper JSON ABI format for viem/wagmi

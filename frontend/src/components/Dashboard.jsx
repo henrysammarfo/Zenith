@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { TrendingUp, Activity, Percent, ExternalLink, ShieldCheck, Wallet, ArrowDown, RefreshCw } from "lucide-react";
+import { TrendingUp, Activity, Percent, ExternalLink, ShieldCheck, Wallet, ArrowDown, RefreshCw, CheckCircle2 } from "lucide-react";
 import { useReadContract, useWriteContract, useAccount, useWaitForTransactionReceipt, usePublicClient } from "wagmi";
 import { formatUnits, parseUnits, parseAbiItem } from "viem";
-import { ZENITH_VAULT_ADDRESS, ASSET_ADDRESS, VAULT_ABI, ERC20_ABI } from "../config/constants";
+import { ZENITH_VAULT_ADDRESS, ASSET_ADDRESS, VAULT_ABI, ERC20_ABI, START_BLOCK } from "../config/constants";
 import { cn } from "../lib/utils";
 import { useNavigate } from "react-router-dom";
 
@@ -17,6 +17,10 @@ export default function Dashboard() {
     const [txHash, setTxHash] = useState(null);
     const [activities, setActivities] = useState([]);
     const [isLoadingActivities, setIsLoadingActivities] = useState(false);
+    const [txType, setTxType] = useState(null); // 'approve', 'deposit', 'withdraw'
+
+    // Persistent Ledger Key
+    const LEDGER_KEY = `zenith_ledger_${address}`;
 
     // Read Vault Total Balance / TVL
     const { data: totalAssets, refetch: refetchVault } = useReadContract({
@@ -64,9 +68,34 @@ export default function Dashboard() {
 
     const { writeContractAsync } = useWriteContract();
 
-    const { isSuccess: isTxConfirmed } = useWaitForTransactionReceipt({
+    const { isSuccess: isTxConfirmed, data: txReceipt } = useWaitForTransactionReceipt({
         hash: txHash,
     });
+
+    // Save pending transaction to localStorage
+    const savePendingTx = (hash, type, val) => {
+        const local = JSON.parse(localStorage.getItem(LEDGER_KEY) || "[]");
+        const entry = {
+            hash,
+            type,
+            val,
+            status: "Pending",
+            timestamp: Date.now(),
+        };
+        localStorage.setItem(LEDGER_KEY, JSON.stringify([entry, ...local].slice(0, 20)));
+        // Immediately update UI with local data
+        loadLocalLedger();
+    };
+
+    const loadLocalLedger = () => {
+        if (!address) return;
+        const local = JSON.parse(localStorage.getItem(LEDGER_KEY) || "[]");
+        setActivities(prev => {
+            const onchain = prev.filter(a => a.status === "Confirmed");
+            const combined = [...local.filter(l => !onchain.find(o => o.hash === l.hash)), ...onchain];
+            return combined.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)).slice(0, 10);
+        });
+    };
 
     // Fetch real activity logs from blockchain
     const fetchActivities = useCallback(async () => {
@@ -74,55 +103,49 @@ export default function Dashboard() {
         setIsLoadingActivities(true);
 
         try {
-            const currentBlock = await publicClient.getBlockNumber();
-            // Fetch last ~5000 blocks to avoid RPC limits
-            const fromBlock = currentBlock > 5000n ? currentBlock - 5000n : 0n;
+            // Fetch everything from START_BLOCK for absolute persistence
+            const fromBlock = START_BLOCK;
 
-            // Fetch ALL Deposit events from the vault (then filter client-side)
-            const depositLogs = await publicClient.getLogs({
-                address: ZENITH_VAULT_ADDRESS,
-                event: parseAbiItem('event Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares)'),
-                fromBlock,
-                toBlock: 'latest',
-            });
+            const [depositLogs, withdrawLogs, rebalanceLogs] = await Promise.all([
+                publicClient.getLogs({
+                    address: ZENITH_VAULT_ADDRESS,
+                    event: parseAbiItem('event Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares)'),
+                    fromBlock,
+                    toBlock: 'latest',
+                }),
+                publicClient.getLogs({
+                    address: ZENITH_VAULT_ADDRESS,
+                    event: parseAbiItem('event Withdraw(address indexed sender, address indexed receiver, address indexed owner, uint256 assets, uint256 shares)'),
+                    fromBlock,
+                    toBlock: 'latest',
+                }),
+                publicClient.getLogs({
+                    address: ZENITH_VAULT_ADDRESS,
+                    event: parseAbiItem('event Rebalanced(address indexed fromPool, address indexed toPool, uint256 amount)'),
+                    fromBlock,
+                    toBlock: 'latest',
+                })
+            ]);
 
-            // Fetch ALL Withdraw events from the vault (then filter client-side)
-            const withdrawLogs = await publicClient.getLogs({
-                address: ZENITH_VAULT_ADDRESS,
-                event: parseAbiItem('event Withdraw(address indexed sender, address indexed receiver, address indexed owner, uint256 assets, uint256 shares)'),
-                fromBlock,
-                toBlock: 'latest',
-            });
-
-            // Fetch all Rebalanced events (protocol-wide)
-            const rebalanceLogs = await publicClient.getLogs({
-                address: ZENITH_VAULT_ADDRESS,
-                event: parseAbiItem('event Rebalanced(address indexed fromPool, address indexed toPool, uint256 amount)'),
-                fromBlock,
-                toBlock: 'latest',
-            });
-
-            // Filter deposits where user is sender OR owner
             const userDeposits = depositLogs.filter(log =>
                 log.args.sender?.toLowerCase() === address.toLowerCase() ||
                 log.args.owner?.toLowerCase() === address.toLowerCase()
             );
 
-            // Filter withdraws where user is sender, receiver, OR owner
             const userWithdraws = withdrawLogs.filter(log =>
                 log.args.sender?.toLowerCase() === address.toLowerCase() ||
                 log.args.receiver?.toLowerCase() === address.toLowerCase() ||
                 log.args.owner?.toLowerCase() === address.toLowerCase()
             );
 
-            // Combine and format all events
-            const allActivities = [
+            const onchainActivities = [
                 ...userDeposits.map(log => ({
                     type: "Deposit",
                     status: "Confirmed",
                     hash: log.transactionHash,
                     blockNumber: log.blockNumber,
                     val: `+${parseFloat(formatUnits(log.args.assets || 0n, 18)).toFixed(2)} MTK`,
+                    timestamp: 0, // Block number will handle sorting
                 })),
                 ...userWithdraws.map(log => ({
                     type: "Withdraw",
@@ -130,6 +153,7 @@ export default function Dashboard() {
                     hash: log.transactionHash,
                     blockNumber: log.blockNumber,
                     val: `-${parseFloat(formatUnits(log.args.assets || 0n, 18)).toFixed(2)} MTK`,
+                    timestamp: 0,
                 })),
                 ...rebalanceLogs.map(log => ({
                     type: "Rebalance",
@@ -137,20 +161,28 @@ export default function Dashboard() {
                     hash: log.transactionHash,
                     blockNumber: log.blockNumber,
                     val: `${parseFloat(formatUnits(log.args.amount || 0n, 18)).toFixed(2)} MTK`,
+                    timestamp: 0,
                 })),
             ];
 
-            // Sort by block number descending (newest first)
-            allActivities.sort((a, b) => Number(b.blockNumber) - Number(a.blockNumber));
+            // Load local pending ones and merge
+            const local = JSON.parse(localStorage.getItem(LEDGER_KEY) || "[]");
+            const combined = [...local.filter(l => !onchainActivities.find(o => o.hash === l.hash)), ...onchainActivities];
 
-            setActivities(allActivities.slice(0, 10)); // Show last 10
+            // Sort: block number first (onchain), then timestamp (local)
+            combined.sort((a, b) => {
+                if (b.blockNumber && a.blockNumber) return Number(b.blockNumber) - Number(a.blockNumber);
+                if (b.blockNumber) return 1;
+                if (a.blockNumber) return -1;
+                return (b.timestamp || 0) - (a.timestamp || 0);
+            });
+
+            setActivities(combined.slice(0, 10));
         } catch (e) {
             console.error("Failed to fetch activities:", e);
-            setActivities([]);
         }
         setIsLoadingActivities(false);
-    }, [publicClient, address]);
-
+    }, [publicClient, address, LEDGER_KEY]);
 
     useEffect(() => {
         fetchActivities();
@@ -164,12 +196,20 @@ export default function Dashboard() {
             refetchMtk();
             refetchZth();
             refetchAllowance();
-            fetchActivities(); // Refresh activity log
+            fetchActivities();
+
+            // If it was an approval, don't clear amount, just update state
+            if (txType === 'approve') {
+                console.log("Approval confirmed, waiting for user to deposit...");
+            } else {
+                setAmount("");
+            }
+
             setIsProcessing(false);
             setTxHash(null);
-            setAmount("");
+            setTxType(null);
         }
-    }, [isTxConfirmed]);
+    }, [isTxConfirmed, txType]);
 
     const stats = [
         {
@@ -192,9 +232,7 @@ export default function Dashboard() {
         },
     ];
 
-    const handleFaucet = () => {
-        navigate("/faucet");
-    };
+    const handleFaucet = () => navigate("/faucet");
 
     const handleManualRebalance = async () => {
         try {
@@ -204,7 +242,9 @@ export default function Dashboard() {
                 functionName: "checkYieldsAndRebalance",
             });
             setTxHash(hash);
+            setTxType('rebalance');
             setIsProcessing(true);
+            savePendingTx(hash, "Rebalance", "System");
         } catch (e) {
             console.error(e);
         }
@@ -218,27 +258,29 @@ export default function Dashboard() {
             const val = parseUnits(amount, 18);
 
             if (activeTab === "deposit") {
-                // Check Allowance
                 if (!allowance || allowance < val) {
-                    const approveHash = await writeContractAsync({
+                    setTxType('approve');
+                    const hash = await writeContractAsync({
                         address: ASSET_ADDRESS,
                         abi: ERC20_ABI,
                         functionName: "approve",
                         args: [ZENITH_VAULT_ADDRESS, val],
                     });
-                    setTxHash(approveHash);
-                    return; // Wait for approval confirmation
+                    setTxHash(hash);
+                    savePendingTx(hash, "Approve", `${amount} MTK`);
+                } else {
+                    setTxType('deposit');
+                    const hash = await writeContractAsync({
+                        address: ZENITH_VAULT_ADDRESS,
+                        abi: VAULT_ABI,
+                        functionName: "deposit",
+                        args: [val, address],
+                    });
+                    setTxHash(hash);
+                    savePendingTx(hash, "Deposit", `${amount} MTK`);
                 }
-
-                const hash = await writeContractAsync({
-                    address: ZENITH_VAULT_ADDRESS,
-                    abi: VAULT_ABI,
-                    functionName: "deposit",
-                    args: [val, address],
-                });
-                setTxHash(hash);
             } else {
-                // Redeem / Withdraw
+                setTxType('withdraw');
                 const hash = await writeContractAsync({
                     address: ZENITH_VAULT_ADDRESS,
                     abi: VAULT_ABI,
@@ -246,17 +288,16 @@ export default function Dashboard() {
                     args: [val, address, address],
                 });
                 setTxHash(hash);
+                savePendingTx(hash, "Withdraw", `${amount} MTK`);
             }
         } catch (e) {
             console.error(e);
             setIsProcessing(false);
+            setTxType(null);
         }
     };
 
-    const formatHash = (hash) => {
-        if (!hash) return "";
-        return `${hash.slice(0, 10)}...${hash.slice(-4)}`;
-    };
+    const formatHash = (hash) => hash ? `${hash.slice(0, 10)}...${hash.slice(-4)}` : "";
 
     return (
         <div className="pt-32 pb-20 min-h-screen relative overflow-hidden">
@@ -288,22 +329,15 @@ export default function Dashboard() {
                         transition={{ delay: 0.2 }}
                         className="flex items-center gap-4"
                     >
-                        <div className="flex items-center gap-4">
-                            <button
-                                onClick={handleFaucet}
-                                disabled={isProcessing}
-                                className="px-4 py-2 rounded-full bg-white/5 border border-white/10 flex items-center gap-2 hover:bg-white/10 transition-colors"
-                            >
-                                <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-                                <span className="text-[10px] font-bold tracking-widest uppercase text-white/60">Request MTK Token</span>
-                            </button>
-                            <div className="px-4 py-2 rounded-full bg-white/5 border border-white/10 flex items-center gap-2">
-                                <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                                <span className="text-[10px] font-bold tracking-widest uppercase text-white/60">Verified Sepolia Node</span>
-                            </div>
-                        </div>
                         <button
-                            onClick={() => refetchYields()}
+                            onClick={handleFaucet}
+                            className="px-4 py-2 rounded-full bg-white/5 border border-white/10 flex items-center gap-2 hover:bg-white/10 transition-colors"
+                        >
+                            <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                            <span className="text-[10px] font-bold tracking-widest uppercase text-white/60">Request MTK Token</span>
+                        </button>
+                        <button
+                            onClick={fetchActivities}
                             className="text-[10px] font-bold tracking-widest uppercase text-white/20 hover:text-white transition-colors"
                         >
                             Sync Explorer
@@ -320,9 +354,9 @@ export default function Dashboard() {
                             transition={{ delay: 0.1 * i }}
                             className="premium-card group relative overflow-hidden"
                         >
-                            <div className="absolute top-0 right-0 w-24 h-24 bg-white/5 rounded-full blur-2xl -mr-12 -mt-12 pointer-events-none group-hover:bg-white/10 transition-colors" />
+                            <div className="absolute top-0 right-0 w-24 h-24 bg-white/5 rounded-full blur-2xl -mr-12 -mt-12 group-hover:bg-white/10 transition-colors" />
                             <div className="flex justify-between items-start mb-4 relative z-10">
-                                <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center group-hover:bg-white group-hover:text-black transition-all duration-500">
+                                <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center group-hover:bg-white group-hover:text-black transition-all">
                                     <stat.icon className="w-5 h-5" />
                                 </div>
                                 <span className="text-[9px] font-bold px-2 py-1 rounded-md bg-white/10 text-white uppercase tracking-tighter">
@@ -339,17 +373,11 @@ export default function Dashboard() {
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.4 }}
                         className="lg:col-span-2 premium-card flex flex-col"
                     >
                         <div className="flex items-center justify-between mb-8">
                             <h3 className="text-xs font-bold tracking-[0.3em] uppercase text-white/40">Portfolio Distribution</h3>
-                            <a
-                                href={`https://sepolia.etherscan.io/address/${ZENITH_VAULT_ADDRESS}`}
-                                target="_blank"
-                                className="text-[10px] uppercase font-bold text-white/20 hover:text-white transition-colors flex items-center gap-1"
-                                rel="noreferrer"
-                            >
+                            <a href={`https://sepolia.etherscan.io/address/${ZENITH_VAULT_ADDRESS}`} target="_blank" className="text-[10px] uppercase font-bold text-white/20 hover:text-white transition-colors flex items-center gap-1">
                                 Explorer <ExternalLink className="w-3 h-3" />
                             </a>
                         </div>
@@ -363,12 +391,8 @@ export default function Dashboard() {
                                                 {i === 0 ? "A" : "B"}
                                             </div>
                                             <div>
-                                                <div className="text-sm font-bold text-white mb-0.5 uppercase tracking-widest">
-                                                    {i === 0 ? "MockAaveProtocol" : "MockCompoundProtocol"}
-                                                </div>
-                                                <div className="text-xs font-mono text-white/30 tracking-tighter">
-                                                    {pool.poolAddress?.slice(0, 10)}...{pool.poolAddress?.slice(-4)}
-                                                </div>
+                                                <div className="text-sm font-bold text-white mb-0.5 uppercase tracking-widest">{i === 0 ? "MockAaveProtocol" : "MockCompoundProtocol"}</div>
+                                                <div className="text-xs font-mono text-white/30 tracking-tighter">{pool.poolAddress?.slice(0, 10)}...{pool.poolAddress?.slice(-4)}</div>
                                             </div>
                                         </div>
                                         <div className="text-right">
@@ -380,16 +404,11 @@ export default function Dashboard() {
                                         <motion.div
                                             initial={{ width: 0 }}
                                             animate={{ width: `${Number(pool.percentage) / 100}%` }}
-                                            transition={{ duration: 1.5, delay: 0.8 + (i * 0.3) }}
                                             className="h-full bg-gradient-to-r from-white/20 via-white to-white/20 rounded-full"
                                         />
                                     </div>
                                 </div>
-                            )) || (
-                                    <div className="text-center py-20 text-white/10 uppercase tracking-[0.3em] animate-pulse">
-                                        Initializing allocation matrix...
-                                    </div>
-                                )}
+                            )) || <div className="text-center py-20 text-white/10 uppercase tracking-[0.3em] animate-pulse">Initializing allocation matrix...</div>}
                         </div>
 
                         <div className="mt-12 p-6 rounded-2xl bg-white/5 border border-white/5 flex flex-col md:flex-row items-center justify-between gap-6 group">
@@ -399,88 +418,53 @@ export default function Dashboard() {
                                 </div>
                                 <div>
                                     <div className="text-xs font-bold text-white uppercase tracking-widest">Autonomous Rebalancing</div>
-                                    <div className="text-[9px] text-white/30 uppercase tracking-[0.2em] mt-1 max-w-sm">
-                                        The Reactive Network automatically migrates liquidity to the highest-yielding protocol.
-                                        {yieldData && <span className="text-white/60 ml-2">Currently targeting: {Number(yieldData.poolAApy) > Number(yieldData.poolBApy) ? "Pool A" : "Pool B"}</span>}
-                                    </div>
+                                    <div className="text-[9px] text-white/30 uppercase tracking-[0.2em] mt-1 max-w-sm">The Reactive Network automatically migrates liquidity. Currently: <span className="text-white/60 font-bold">{Number(yieldData?.poolAApy) > Number(yieldData?.poolBApy) ? "Pool A" : "Pool B"} Target</span></div>
                                 </div>
                             </div>
-                            <button
-                                onClick={handleManualRebalance}
-                                disabled={isProcessing}
-                                className="relative h-12 px-8 rounded-xl bg-white text-black font-black text-[11px] uppercase tracking-widest hover:bg-zenith-silver hover:scale-[1.02] transition-all shadow-[0_0_20px_rgba(255,255,255,0.1)] group flex items-center gap-2"
-                            >
+                            <button onClick={handleManualRebalance} disabled={isProcessing} className="relative h-12 px-8 rounded-xl bg-white text-black font-black text-[11px] uppercase tracking-widest hover:bg-zenith-silver transition-all shadow-xl group flex items-center gap-2">
                                 <span>Execute Rebalance</span>
                                 <TrendingUp className="w-4 h-4" />
                             </button>
                         </div>
                     </motion.div>
 
-                    <motion.div
-                        initial={{ opacity: 0, x: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.5 }}
-                        className="premium-card flex flex-col relative overflow-hidden"
-                    >
+                    <motion.div className="premium-card flex flex-col relative overflow-hidden">
                         <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-white/20 to-transparent" />
-
                         <div className="mb-8">
                             <h3 className="text-xs font-bold tracking-[0.3em] uppercase text-white/40 mb-8">Personal Terminal</h3>
-
                             <div className="flex gap-2 p-1 bg-white/5 border border-white/10 rounded-xl mb-4">
-                                <button
-                                    onClick={() => setActiveTab("deposit")}
-                                    className={cn("flex-1 py-2 text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all", activeTab === "deposit" ? "bg-white text-black font-black" : "text-white/40 hover:text-white")}
-                                >
-                                    Deposit
-                                </button>
-                                <button
-                                    onClick={() => setActiveTab("withdraw")}
-                                    className={cn("flex-1 py-2 text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all", activeTab === "withdraw" ? "bg-white text-black font-black" : "text-white/40 hover:text-white")}
-                                >
-                                    Withdraw
-                                </button>
+                                <button onClick={() => setActiveTab("deposit")} className={cn("flex-1 py-2 text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all", activeTab === "deposit" ? "bg-white text-black font-black" : "text-white/40 hover:text-white")}>Deposit</button>
+                                <button onClick={() => setActiveTab("withdraw")} className={cn("flex-1 py-2 text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all", activeTab === "withdraw" ? "bg-white text-black font-black" : "text-white/40 hover:text-white")}>Withdraw</button>
                             </div>
 
                             <div className="mb-6 p-4 rounded-xl bg-blue-500/5 border border-blue-500/10">
                                 <div className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-1 flex items-center gap-2">
                                     <ShieldCheck className="w-3 h-3" /> Vault Shares (ZTH)
                                 </div>
-                                <p className="text-[9px] text-white/40 uppercase tracking-widest leading-relaxed">
-                                    When you deposit **MTK**, you receive **ZTH** shares. ZTH represents your 1:1 ownership of assets + accumulated yield in the vault. Withdraw ZTH anytime to reclaim your MTK.
-                                </p>
+                                <p className="text-[9px] text-white/40 uppercase tracking-widest leading-relaxed">MTK is your asset. ZTH represents your ownership + yield. Withdraw ZTH anytime to reclaim MTK.</p>
                             </div>
 
                             <div className="space-y-6">
                                 <div className="space-y-2">
                                     <div className="flex justify-between">
                                         <span className="text-[9px] font-bold uppercase tracking-widest text-white/30">Target Amount</span>
-                                        <span className="text-[9px] font-bold uppercase tracking-widest text-white/50">
-                                            Balance: {activeTab === "deposit" ? (mtkBalance ? parseFloat(formatUnits(mtkBalance, 18)).toFixed(2) : "0.00") : (zthBalance ? parseFloat(formatUnits(zthBalance, 18)).toFixed(2) : "0.00")} {activeTab === "deposit" ? "MTK" : "ZTH"}
-                                        </span>
+                                        <span className="text-[9px] font-bold uppercase tracking-widest text-white/50">Balance: {activeTab === "deposit" ? parseFloat(formatUnits(mtkBalance || 0n, 18)).toFixed(2) : parseFloat(formatUnits(zthBalance || 0n, 18)).toFixed(2)} {activeTab === "deposit" ? "MTK" : "ZTH"}</span>
                                     </div>
                                     <div className="relative group">
-                                        <input
-                                            type="number"
-                                            value={amount}
-                                            onChange={(e) => setAmount(e.target.value)}
-                                            placeholder="0.00"
-                                            className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-4 text-xl font-orbit font-bold text-white placeholder:text-white/10 focus:outline-none focus:border-white/30 transition-all"
-                                        />
-                                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-white/20 uppercase tracking-widest group-focus-within:text-white/40 transition-colors">
-                                            {activeTab === "deposit" ? "MTK" : "ZTH"}
-                                        </span>
+                                        <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-4 text-xl font-orbit font-bold text-white focus:border-white/30 transition-all" />
+                                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-white/20 uppercase tracking-widest">{activeTab === "deposit" ? "MTK" : "ZTH"}</span>
                                     </div>
                                 </div>
 
                                 <div className="p-4 rounded-xl bg-white/5 border border-white/5 space-y-3">
+                                    {activeTab === "deposit" && (!allowance || allowance < parseUnits(amount || "0", 18)) && (
+                                        <div className="flex items-center gap-2 text-[10px] font-bold text-yellow-500 uppercase tracking-widest mb-2">
+                                            <Activity className="w-3 h-3 animate-spin" /> Step 1: Authorization Required
+                                        </div>
+                                    )}
                                     <div className="flex justify-between items-center text-[10px]">
                                         <span className="font-bold uppercase tracking-widest text-white/20">Protocol Fee</span>
                                         <span className="font-bold text-white/80">0.00%</span>
-                                    </div>
-                                    <div className="flex justify-between items-center text-[10px]">
-                                        <span className="font-bold uppercase tracking-widest text-white/20">Slippage Tolerance</span>
-                                        <span className="font-bold text-white/80">Auto</span>
                                     </div>
                                     <div className="h-[1px] bg-white/5" />
                                     <div className="flex justify-between items-center text-xs">
@@ -491,95 +475,51 @@ export default function Dashboard() {
                             </div>
                         </div>
 
-                        <div className="mt-auto space-y-4">
-                            <button
-                                onClick={handleAction}
-                                disabled={!amount || isProcessing}
-                                className="relative w-full h-14 rounded-xl bg-white text-black font-black text-xs uppercase tracking-widest hover:bg-zenith-silver hover:scale-[1.01] transition-all shadow-xl flex items-center justify-center gap-2 group disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                <span>
-                                    {isProcessing ? "Processing..." : (activeTab === "deposit" ? ((!allowance || allowance < parseUnits(amount || "0", 18)) ? "Authorize MTK" : "Deposit MTK") : "Withdraw MTK")}
-                                </span>
-                                <Wallet className="w-4 h-4" />
+                        <div className="mt-auto pt-6 space-y-4">
+                            <button onClick={handleAction} disabled={!amount || isProcessing} className="w-full h-14 rounded-xl bg-white text-black font-black text-xs uppercase tracking-widest hover:bg-zenith-silver transition-all shadow-xl flex items-center justify-center gap-2 group disabled:opacity-50">
+                                <span>{isProcessing ? "Transacting..." : (activeTab === "deposit" ? ((!allowance || allowance < parseUnits(amount || "0", 18)) ? "Authorize MTK" : "Deposit MTK") : "Withdraw MTK")}</span>
+                                {isProcessing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Wallet className="w-4 h-4" />}
                             </button>
-                            <p className="text-[10px] text-center text-white/20 uppercase tracking-widest leading-relaxed">
-                                Assets are managed by audited reactive contracts. <br /> Monitor state on-chain.
-                            </p>
+                            {isTxConfirmed && <div className="text-center text-[10px] font-bold text-green-500 uppercase tracking-widest flex items-center justify-center gap-1"><CheckCircle2 className="w-3 h-3" /> Transaction Success</div>}
                         </div>
                     </motion.div>
                 </div>
 
-                {/* Real-Time Activity Ledger */}
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.6 }}
-                    className="mt-6 premium-card"
-                >
+                <motion.div className="mt-6 premium-card">
                     <div className="flex items-center justify-between mb-8">
                         <div>
-                            <h3 className="text-xs font-bold tracking-[0.3em] uppercase text-white/40 flex items-center gap-2">
-                                <Wallet className="w-3 h-3 text-white/20" /> Activity Ledger
-                            </h3>
-                            <div className="text-[9px] text-white/20 uppercase tracking-widest mt-1">Real-time on-chain transaction history</div>
+                            <h3 className="text-xs font-bold tracking-[0.3em] uppercase text-white/40 flex items-center gap-2">Activity Ledger</h3>
+                            <div className="text-[9px] text-white/20 uppercase tracking-widest mt-1">On-chain history from <span className="text-white/40">Block #{START_BLOCK.toString()}</span></div>
                         </div>
-                        <div className="flex items-center gap-4">
-                            <button
-                                onClick={fetchActivities}
-                                disabled={isLoadingActivities}
-                                className="flex items-center gap-2 px-3 py-1 rounded bg-white/5 border border-white/10 hover:bg-white/10 transition-colors"
-                            >
-                                <RefreshCw className={cn("w-3 h-3", isLoadingActivities && "animate-spin")} />
-                                <span className="text-[9px] font-bold text-white/60 uppercase tracking-widest">Refresh</span>
-                            </button>
-                            <div className="hidden md:flex items-center gap-2 px-3 py-1 rounded bg-green-500/5 border border-green-500/10">
-                                <div className="w-1 h-1 rounded-full bg-green-500" />
-                                <span className="text-[9px] font-bold text-green-500/80 uppercase tracking-widest">Live</span>
-                            </div>
-                        </div>
+                        <button onClick={fetchActivities} disabled={isLoadingActivities} className="flex items-center gap-2 px-3 py-1 rounded bg-white/5 border border-white/10 hover:bg-white/10 transition-colors">
+                            <RefreshCw className={cn("w-3 h-3", isLoadingActivities && "animate-spin")} />
+                            <span className="text-[9px] font-bold text-white/60 uppercase tracking-widest">Sync Ledger</span>
+                        </button>
                     </div>
 
                     <div className="space-y-3">
-                        {isLoadingActivities ? (
-                            <div className="text-center py-12 text-white/20 uppercase tracking-[0.3em] animate-pulse">
-                                Fetching on-chain events...
-                            </div>
-                        ) : activities.length === 0 ? (
-                            <div className="text-center py-12">
-                                <div className="text-white/10 uppercase tracking-[0.3em] mb-4">No recent activity</div>
-                                <p className="text-[10px] text-white/20 uppercase tracking-widest">
-                                    Deposit, redeem, or trigger a rebalance to see your transactions here.
-                                </p>
-                            </div>
-                        ) : (
-                            activities.map((tx, i) => (
-                                <div key={i} className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/5 hover:border-white/10 transition-all duration-300 group cursor-default">
-                                    <div className="flex items-center gap-5">
-                                        <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center group-hover:bg-white group-hover:text-black transition-all duration-500">
-                                            <ArrowDown className={cn("w-4 h-4", tx.type === "Withdraw" ? "" : "rotate-180", tx.type === "Rebalance" && "rotate-90")} />
-                                        </div>
-                                        <div>
-                                            <div className="text-[11px] font-bold text-white uppercase tracking-widest mb-0.5">{tx.type}</div>
-                                            <div className="text-[9px] text-white/20 font-mono tracking-tighter group-hover:text-white/40 transition-colors">{formatHash(tx.hash)}</div>
-                                        </div>
+                        {isLoadingActivities && activities.length === 0 ? <div className="text-center py-12 text-white/20 uppercase tracking-[0.3em] animate-pulse">Scanning blockchain...</div> : activities.length === 0 ? <div className="text-center py-12 text-white/10 uppercase tracking-[0.3em]">No activity detected on this account</div> : activities.map((tx, i) => (
+                            <div key={i} className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/5 hover:border-white/10 transition-all group">
+                                <div className="flex items-center gap-5">
+                                    <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center group-hover:bg-white group-hover:text-black transition-all">
+                                        {tx.status === "Confirmed" ? <CheckCircle2 className="w-4 h-4" /> : <RefreshCw className="w-4 h-4 animate-spin" />}
                                     </div>
-                                    <div className="flex items-center gap-10">
-                                        <div className="text-right hidden md:block">
-                                            <div className="text-[9px] font-bold text-white/40 uppercase tracking-widest mb-0.5">{tx.val}</div>
-                                            <div className="text-[9px] text-white/20 uppercase tracking-widest font-bold">{tx.status} • Block #{tx.blockNumber?.toString()}</div>
-                                        </div>
-                                        <a
-                                            href={`https://sepolia.etherscan.io/tx/${tx.hash}`}
-                                            target="_blank"
-                                            className="w-10 h-10 rounded-xl border border-white/10 flex items-center justify-center hover:bg-white hover:text-black transition-all duration-500"
-                                            rel="noreferrer"
-                                        >
-                                            <ExternalLink className="w-3.5 h-3.5" />
-                                        </a>
+                                    <div>
+                                        <div className="text-[11px] font-bold text-white uppercase tracking-widest mb-0.5">{tx.type} {tx.status === "Pending" && <span className="text-yellow-500 text-[8px] ml-2 animate-pulse">PENDING</span>}</div>
+                                        <div className="text-[9px] text-white/20 font-mono">{formatHash(tx.hash)}</div>
                                     </div>
                                 </div>
-                            ))
-                        )}
+                                <div className="flex items-center gap-10">
+                                    <div className="text-right hidden md:block">
+                                        <div className="text-[9px] font-bold text-white/40 uppercase tracking-widest mb-1">{tx.val}</div>
+                                        <div className="text-[9px] text-white/20 uppercase tracking-widest font-bold">{tx.status} {tx.blockNumber && `• #${tx.blockNumber.toString()}`}</div>
+                                    </div>
+                                    <a href={`https://sepolia.etherscan.io/tx/${tx.hash}`} target="_blank" className="w-10 h-10 rounded-xl border border-white/10 flex items-center justify-center hover:bg-white hover:text-black transition-all" rel="noreferrer">
+                                        <ExternalLink className="w-3.5 h-3.5" />
+                                    </a>
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 </motion.div>
             </div>

@@ -56,6 +56,8 @@ To demonstrate production-grade reactivity, we have executed multiple autonomous
 
 ## Architecture
 
+![Zenith Architecture](docs/architecture.png)
+
 - **Reactive Contract**: `YieldMonitor` (Deployed on Reactive Network). Subscribes to Lending Pool events.
 - **Destination Contracts**: 
     - `CrossChainLendingVault`: ERC4626-compliant vault managing user assets.

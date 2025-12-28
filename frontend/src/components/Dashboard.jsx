@@ -427,19 +427,28 @@ export default function Dashboard() {
                         <div className="mb-8">
                             <h3 className="text-xs font-bold tracking-[0.3em] uppercase text-white/40 mb-8">Personal Terminal</h3>
 
-                            <div className="flex gap-2 p-1 bg-white/5 border border-white/10 rounded-xl mb-8">
+                            <div className="flex gap-2 p-1 bg-white/5 border border-white/10 rounded-xl mb-4">
                                 <button
                                     onClick={() => setActiveTab("deposit")}
-                                    className={cn("flex-1 py-2 text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all", activeTab === "deposit" ? "bg-white text-black" : "text-white/40 hover:text-white")}
+                                    className={cn("flex-1 py-2 text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all", activeTab === "deposit" ? "bg-white text-black font-black" : "text-white/40 hover:text-white")}
                                 >
                                     Deposit
                                 </button>
                                 <button
                                     onClick={() => setActiveTab("withdraw")}
-                                    className={cn("flex-1 py-2 text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all", activeTab === "withdraw" ? "bg-white text-black" : "text-white/40 hover:text-white")}
+                                    className={cn("flex-1 py-2 text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all", activeTab === "withdraw" ? "bg-white text-black font-black" : "text-white/40 hover:text-white")}
                                 >
-                                    Redeem
+                                    Withdraw
                                 </button>
+                            </div>
+
+                            <div className="mb-6 p-4 rounded-xl bg-blue-500/5 border border-blue-500/10">
+                                <div className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-1 flex items-center gap-2">
+                                    <ShieldCheck className="w-3 h-3" /> Vault Shares (ZTH)
+                                </div>
+                                <p className="text-[9px] text-white/40 uppercase tracking-widest leading-relaxed">
+                                    When you deposit **MTK**, you receive **ZTH** shares. ZTH represents your 1:1 ownership of assets + accumulated yield in the vault. Withdraw ZTH anytime to reclaim your MTK.
+                                </p>
                             </div>
 
                             <div className="space-y-6">
@@ -467,15 +476,15 @@ export default function Dashboard() {
                                 <div className="p-4 rounded-xl bg-white/5 border border-white/5 space-y-3">
                                     <div className="flex justify-between items-center text-[10px]">
                                         <span className="font-bold uppercase tracking-widest text-white/20">Protocol Fee</span>
-                                        <span className="font-bold text-white/60">0.00%</span>
+                                        <span className="font-bold text-white/80">0.00%</span>
                                     </div>
                                     <div className="flex justify-between items-center text-[10px]">
                                         <span className="font-bold uppercase tracking-widest text-white/20">Slippage Tolerance</span>
-                                        <span className="font-bold text-white/60">Auto</span>
+                                        <span className="font-bold text-white/80">Auto</span>
                                     </div>
                                     <div className="h-[1px] bg-white/5" />
                                     <div className="flex justify-between items-center text-xs">
-                                        <span className="font-bold uppercase tracking-widest text-white/40 font-orbit">Estimated {activeTab === "deposit" ? "ZTH" : "MTK"}</span>
+                                        <span className="font-bold uppercase tracking-widest text-white/60 font-orbit">Estimated {activeTab === "deposit" ? "ZTH (Shares)" : "MTK (Asset)"}</span>
                                         <span className="font-bold text-white font-orbit">{amount || "0.00"}</span>
                                     </div>
                                 </div>
@@ -489,7 +498,7 @@ export default function Dashboard() {
                                 className="relative w-full h-14 rounded-xl bg-white text-black font-black text-xs uppercase tracking-widest hover:bg-zenith-silver hover:scale-[1.01] transition-all shadow-xl flex items-center justify-center gap-2 group disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 <span>
-                                    {isProcessing ? "Processing..." : (activeTab === "deposit" ? ((!allowance || allowance < parseUnits(amount || "0", 18)) ? "Authorize MTK" : "Deposit MTK") : "Redeem ZTH")}
+                                    {isProcessing ? "Processing..." : (activeTab === "deposit" ? ((!allowance || allowance < parseUnits(amount || "0", 18)) ? "Authorize MTK" : "Deposit MTK") : "Withdraw MTK")}
                                 </span>
                                 <Wallet className="w-4 h-4" />
                             </button>

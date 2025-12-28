@@ -52,30 +52,49 @@
   background: radial-gradient(circle at 50% 50%, rgba(30, 41, 59, 0.5) 0%, rgba(2, 6, 23, 1) 100%);
 }
 
-/* RainbowKit Modal Visibility Fixes */
+/* RainbowKit Theme Overrides - ONLY for RainbowKit modals */
 [data-rk] {
-  --rk-colors-modalBackground: #1a1a2e !important;
+  --rk-colors-modalBackground: #0f0f1a !important;
   --rk-colors-modalText: #ffffff !important;
-  --rk-colors-modalTextSecondary: #a0a0a0 !important;
-  --rk-colors-actionButtonBorder: rgba(255, 255, 255, 0.1) !important;
+  --rk-colors-modalTextSecondary: #9ca3af !important;
+  --rk-colors-actionButtonBorder: rgba(255, 255, 255, 0.2) !important;
   --rk-colors-connectButtonBackground: #1a1a2e !important;
   --rk-colors-connectButtonText: #ffffff !important;
+  --rk-colors-accentColor: #ffffff !important;
+  --rk-colors-accentColorForeground: #000000 !important;
 }
 
-/* Ensure all modal text is visible */
-[data-rk] button,
-[data-rk] span,
-[data-rk] div {
-  color: inherit !important;
+/* RainbowKit Modal specific fixes */
+[data-rk-chain-modal],
+[data-rk-account-modal],
+[data-rk-connect-modal] {
+  background: #0f0f1a !important;
 }
 
-/* Network switcher dropdown fix */
-[data-rk] [role="menu"] {
-  background: #1a1a2e !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+/* Chain/Network switcher dropdown */
+[data-rk] [role="dialog"] {
+  background: #0f0f1a !important;
+  color: #ffffff !important;
 }
 
+[data-rk] [role="dialog"] button {
+  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+[data-rk] [role="dialog"] button:hover {
+  background: rgba(255, 255, 255, 0.15) !important;
+}
+
+/* Wallet option buttons in connect modal */
+[data-rk] [role="dialog"] [data-testid] {
+  color: #ffffff !important;
+}
+
+/* Chain name text */
+[data-rk] [role="menu"],
 [data-rk] [role="menuitem"] {
+  background: #0f0f1a !important;
   color: #ffffff !important;
 }
 

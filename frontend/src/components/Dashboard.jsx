@@ -75,23 +75,22 @@ export default function Dashboard() {
 
         try {
             const currentBlock = await publicClient.getBlockNumber();
-            const fromBlock = currentBlock - BigInt(10000); // Last ~10k blocks
+            // Fetch last ~5000 blocks to avoid RPC limits
+            const fromBlock = currentBlock > 5000n ? currentBlock - 5000n : 0n;
 
-            // Fetch Deposit events for this user
+            // Fetch ALL Deposit events from the vault (then filter client-side)
             const depositLogs = await publicClient.getLogs({
                 address: ZENITH_VAULT_ADDRESS,
                 event: parseAbiItem('event Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares)'),
-                args: { sender: address },
-                fromBlock: fromBlock > 0n ? fromBlock : 0n,
+                fromBlock,
                 toBlock: 'latest',
             });
 
-            // Fetch Withdraw events for this user
+            // Fetch ALL Withdraw events from the vault (then filter client-side)
             const withdrawLogs = await publicClient.getLogs({
                 address: ZENITH_VAULT_ADDRESS,
                 event: parseAbiItem('event Withdraw(address indexed sender, address indexed receiver, address indexed owner, uint256 assets, uint256 shares)'),
-                args: { sender: address },
-                fromBlock: fromBlock > 0n ? fromBlock : 0n,
+                fromBlock,
                 toBlock: 'latest',
             });
 
@@ -99,32 +98,45 @@ export default function Dashboard() {
             const rebalanceLogs = await publicClient.getLogs({
                 address: ZENITH_VAULT_ADDRESS,
                 event: parseAbiItem('event Rebalanced(address indexed fromPool, address indexed toPool, uint256 amount)'),
-                fromBlock: fromBlock > 0n ? fromBlock : 0n,
+                fromBlock,
                 toBlock: 'latest',
             });
 
+            // Filter deposits where user is sender OR owner
+            const userDeposits = depositLogs.filter(log =>
+                log.args.sender?.toLowerCase() === address.toLowerCase() ||
+                log.args.owner?.toLowerCase() === address.toLowerCase()
+            );
+
+            // Filter withdraws where user is sender, receiver, OR owner
+            const userWithdraws = withdrawLogs.filter(log =>
+                log.args.sender?.toLowerCase() === address.toLowerCase() ||
+                log.args.receiver?.toLowerCase() === address.toLowerCase() ||
+                log.args.owner?.toLowerCase() === address.toLowerCase()
+            );
+
             // Combine and format all events
             const allActivities = [
-                ...depositLogs.map(log => ({
+                ...userDeposits.map(log => ({
                     type: "Deposit",
                     status: "Confirmed",
                     hash: log.transactionHash,
                     blockNumber: log.blockNumber,
-                    val: `+${formatUnits(log.args.assets || 0n, 18)} MTK`,
+                    val: `+${parseFloat(formatUnits(log.args.assets || 0n, 18)).toFixed(2)} MTK`,
                 })),
-                ...withdrawLogs.map(log => ({
+                ...userWithdraws.map(log => ({
                     type: "Withdraw",
                     status: "Confirmed",
                     hash: log.transactionHash,
                     blockNumber: log.blockNumber,
-                    val: `-${formatUnits(log.args.assets || 0n, 18)} MTK`,
+                    val: `-${parseFloat(formatUnits(log.args.assets || 0n, 18)).toFixed(2)} MTK`,
                 })),
                 ...rebalanceLogs.map(log => ({
                     type: "Rebalance",
                     status: "Optimized",
                     hash: log.transactionHash,
                     blockNumber: log.blockNumber,
-                    val: `${formatUnits(log.args.amount || 0n, 18)} MTK moved`,
+                    val: `${parseFloat(formatUnits(log.args.amount || 0n, 18)).toFixed(2)} MTK`,
                 })),
             ];
 
@@ -138,6 +150,7 @@ export default function Dashboard() {
         }
         setIsLoadingActivities(false);
     }, [publicClient, address]);
+
 
     useEffect(() => {
         fetchActivities();

@@ -47,43 +47,37 @@ Zenith implements a "Signal Repeater" architecture to overcome cross-chain state
 A detailed step-by-step description of the rebalancing workflow, including **transaction hashes**, can be found in [REACTIVE_BOUNTY_SUBMISSION.md](./REACTIVE_BOUNTY_SUBMISSION.md).
 
 ### Latest Verified State:
-- **Sepolia Vault**: `0xF09c1e34a25583569C352434ADB870aCd014A1D1`
-- **Lasna Monitor**: `0x0d951b817754C4326aF2C1A81Dc459aa071401bA`
+- **Sepolia Vault**: `0x4e30c7578e27f3b66451d3b57277629d43df3c56`
+- **Lasna Monitor**: `0x3830772Ec746270f79a65cd897cb16eA890759f5`
 - **Successful Rebalance**: Verified via automated rebalance triggers following APY updates.
 
 ---
 
 ## 🖥 Frontend Dapp (Zenith UI)
 
-The project includes a premium, "shoe-brand" inspired frontend for monitoring and managing your vaults.
+The project includes a premium, high-fidelity frontend for monitoring and managing your autonomous strategy.
+
+### Key UX Improvements
+- **Persistent Ledger**: Transaction history is tracked via `localStorage`, ensuring data survival across page refreshes.
+- **Sliding Window Sync**: Historical event fetching uses a sliding window approach to prevent RPC timeouts while maintaining 100% data coverage.
+- **Robust Multi-Step UI**: "Approve" and "Deposit" flows are managed by a custom state machine for a seamless user experience.
 
 ### Tech Stack
 - **Framework**: Vite + React
+- **Connectivity**: Reown Appkit + Wagmi + Viem
 - **Animations**: Framer Motion
-- **Styling**: Tailwind CSS
 
 ### Getting Started
 1. `cd frontend`
 2. `npm install`
 3. `npm run dev`
 
-### User Experience & Real-Time Monitoring
-The Zenith Dapp provides a high-fidelity interface for monitoring your autonomous yield strategy:
-- **Live APY & TVL**: Real-time statistics pulled directly from the Sepolia Vault.
-- **Clickable History**: Direct integration with Etherscan and Blockscout for auditing rebalance transactions.
-- **Wallet-Centric**: Persistent, secure sessions using Reown AppKit.
-
 ## Installation
 
 ```bash
 # Clone the repository
-git clone <repository-url>
-cd cross-chain-lending-vault
-
-# Install dependencies
+# (Foundry must be installed)
 forge install
-
-# Build contracts
 forge build
 ```
 
@@ -92,171 +86,27 @@ forge build
 ```bash
 # Run all tests
 forge test
-
-# Run specific test file
-forge test --match-test testDeposit
-
-# Run tests with verbosity
-forge test -vvv
-```
-
-## Deployment
-
-### Local Testing
-
-```bash
-# Start local node
-anvil
-
-# Deploy to local network
-forge script script/Deploy.s.sol --rpc-url http://localhost:8545 --broadcast
-```
-
-### Sepolia Testnet
-
-```bash
-# Set environment variables
-export PRIVATE_KEY=0x...
-export SEPOLIA_RPC_URL=https://sepolia.infura.io/v3/your_key
-
-# Deploy to Sepolia
-forge script script/Deploy.s.sol --rpc-url $SEPOLIA_RPC_URL --broadcast --verify
-```
-
-### Reactive Testnet (Lasna)
-
-```bash
-# Set environment variables
-export REACTIVE_RPC_URL=https://lasna-rpc.rnk.dev
-
-# Deploy Reactive YieldMonitor
-forge create src/reactive/YieldMonitor.sol:YieldMonitor \
-  --rpc-url $REACTIVE_RPC_URL \
-  --private-key $PRIVATE_KEY \
-  --broadcast --legacy \
-  --constructor-args \
-  0x0000000000000000000000000000000000000000 \
-  $POOL_A_ADDR $POOL_B_ADDR $ASSET_ADDR $VAULT_ADDR
-```
-
-## Configuration
-
-### Strategy Parameters
-
-- `rebalanceThreshold`: Minimum yield difference to trigger rebalancing (basis points)
-- `rebalancePercentage`: Percentage of allocation to rebalance (basis points)
-- `maxAllocationPercentage`: Maximum allocation to single pool (basis points)
-- `minDepositAmount`: Minimum deposit amount
-- `autoRebalanceEnabled`: Toggle automatic rebalancing
-
-### Example Configuration
-
-```solidity
-// 0.5% yield difference threshold
-configManager.updateRebalanceThreshold(50);
-
-// Rebalance 10% of allocation
-configManager.updateRebalancePercentage(1000);
-
-// Max 90% allocation to single pool
-configManager.updateMaxAllocationPercentage(9000);
 ```
 
 ## Contract Addresses
 
-### Local Testing
-- Mock Token: Deployed during setup
-- Mock Aave Pool: Deployed during setup
-- Mock Compound Pool: Deployed during setup
-- Yield Monitor: Deployed during setup
-- Config Manager: Deployed during setup
-- Main Vault: Deployed during setup
-
 ### Sepolia Testnet
-- Asset Token (MTK): `0x99b73Eee17e17553C824FCBC694fd01F31908193`
-- Aave Pool Mock: `0x72A2dF456B5BF22A87BB56cC08BAf3037250cd01`
-- Compound Pool Mock: `0x999e5412B426a9d9a6951Ab24385D09d39Dcdd26`
-- Config Manager: `0x6b3b75F3551e5fFE6C5615BAF7Dbf869D9af2C95`
-- Main Vault: `0xF09c1e34a25583569C352434ADB870aCd014A1D1`
-
-## API Reference
-
-### CrossChainLendingVault
-
-```solidity
-function deposit(uint256 amount) external
-function withdraw(uint256 sharesAmount) external
-function getVaultBalance() external view returns (uint256)
-function getCurrentYieldData() external view returns (YieldData memory)
-function getPoolAllocations() external view returns (PoolAllocation[] memory)
-```
-
-### YieldMonitor
-
-```solidity
-function checkYieldRates() external
-function pause() external
-function resume() external
-function getCurrentYieldData() external view returns (uint256, uint256, uint256)
-```
-
-### ConfigManager
-
-```solidity
-function updateRebalanceThreshold(uint256 newThreshold) external
-function updateRebalancePercentage(uint256 newPercentage) external
-function toggleAutoRebalance() external
-function pause() external
-function unpause() external
-```
-
-## Security Considerations
-
-- **Reactive Network Authorization**: First parameter always replaced with ReactVM address
-- **Gas Limit Controls**: Configurable gas limits for callback transactions
-- **Emergency Controls**: Pause functionality and emergency withdrawals
-- **Access Control**: Owner and authorized user management
-- **Reentrancy Protection**: Built-in reentrancy guards
-
-## Yield Calculations
-
-### Aave V3
-- Uses `getReserveData()` to fetch `currentLiquidityRate`
-- Converts Ray rate (per second) to APY in basis points
-
-### Compound V2
-- Uses `supplyRatePerBlock()` to fetch rate per block
-- Converts block rate to annual APY in basis points
-
-## Events
-
-```solidity
-event Deposited(address indexed user, uint256 amount, uint256 shares);
-event Withdrawn(address indexed user, uint256 amount, uint256 shares);
-event Rebalanced(address indexed fromPool, address indexed toPool, uint256 amount);
-event YieldUpdated(uint256 poolA_Apy, uint256 poolB_Apy, uint256 difference);
-```
-
-## Risk Factors
-
-- **Smart Contract Risk**: Potential vulnerabilities in vault or lending protocols
-- **Market Risk**: Yield rates can fluctuate significantly
-- **Liquidity Risk**: Withdrawals may be limited by pool liquidity
-- **Technical Risk**: Reactive Network downtime or failures
+- Asset Token (MTK): `0xc866e23c6c889a67fd1b86be9a4871b6f3427ced`
+- Aave Pool Mock: `0x16e4307a045b06b125446fe612860a98df51f245`
+- Compound Pool Mock: `0xf11a3c025b7ab4d0c9ba15c3f8957cfc5102965b`
+- Config Manager: `0x8401e37c4e5212b7f545bad02bd39ab89d6fbbb7`
+- Main Vault: `0x4e30c7578e27f3b66451d3b57277629d43df3c56`
 
 ## Bounty Requirements Checklist
-
-The following mapping documents compliance with the [Reactive Bounties 2.0](https://dorahacks.io/hackathon/reactive-bounties-2/bounties) criteria:
 
 | Requirement | Compliance Status | Proof / Location |
 | :--- | :--- | :--- |
 | **Integrate 2+ Lending Pools** | ✅ Verified | Aave V3 & Compound V2 Mocks ([Vault.sol#L45](file:///c:/Users/jessi/Desktop/Cross-chain-Lending-Automation/src/core/CrossChainLendingVault.sol#L45)) |
 | **Reactive Reactivity** | ✅ Verified | `YieldMonitor.sol` reacts to log events via `react()` ([YieldMonitor.sol#L92](file:///c:/Users/jessi/Desktop/Cross-chain-Lending-Automation/src/reactive/YieldMonitor.sol#L92)) |
 | **Meaningful Cross-Chain** | ✅ Verified | Trustless rebalancing from Lasna to Sepolia based on yield signals. |
-| **Deployed on Lasna** | ✅ Verified | `0x0d951b817754C4326aF2C1A81Dc459aa071401bA` |
+| **Deployed on Lasna** | ✅ Verified | `0x3830772Ec746270f79a65cd897cb16eA890759f5` |
 | **Step-by-Step Hashes** | ✅ Verified | See [REACTIVE_BOUNTY_SUBMISSION.md](./REACTIVE_BOUNTY_SUBMISSION.md#Phase-3) |
 | **Design/Threat Write-up** | ✅ Verified | Detailed sections in [REACTIVE_BOUNTY_SUBMISSION.md](./REACTIVE_BOUNTY_SUBMISSION.md) |
-| **Demo Video** | ⏳ In Progress | [Link to Video] |
 | **Security/Maintainability** | ✅ Verified | 100% Foundry coverage + `pause()`/`rescue()` emergency gates. |
 
 ## License

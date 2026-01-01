@@ -37,8 +37,25 @@ export default function Dashboard() {
         if (!isSilent) setIsLoadingActivities(true);
 
         try {
+            // OPTIMIZED: Check pending items against receipts first (immediate update)
+            const local = JSON.parse(localStorage.getItem(LEDGER_KEY) || "[]");
+            const updatedLocal = await Promise.all(local.map(async (item) => {
+                if (item.status === "Pending") {
+                    try {
+                        const receipt = await publicClient.getTransactionReceipt({ hash: item.hash });
+                        if (receipt && receipt.status === 'success') {
+                            return { ...item, status: "Confirmed", blockNumber: receipt.blockNumber };
+                        }
+                    } catch (e) { /* ignore tx not found error */ }
+                }
+                return item;
+            }));
+
+            // Save updated states back to local storage immediately
+            localStorage.setItem(LEDGER_KEY, JSON.stringify(updatedLocal));
+
+            // Fetch historical logs (background sync)
             const currentBlock = await publicClient.getBlockNumber();
-            // Use a sliding window of 25,000 blocks. This is enough for a demo and prevents RPC timeouts.
             const fromBlock = currentBlock - 25000n > START_BLOCK ? currentBlock - 25000n : START_BLOCK;
 
             const [depositLogs, withdrawLogs, rebalanceLogs] = await Promise.all([
@@ -89,19 +106,20 @@ export default function Dashboard() {
                 }))
             ];
 
-            const local = JSON.parse(localStorage.getItem(LEDGER_KEY) || "[]");
             const onchainHashes = new Set(userOnchain.map(o => o.hash.toLowerCase()));
 
             // Keep pending items only if not on-chain and not older than 1 hour
-            const stillPending = local.filter(l => {
+            // AND keep locally decided "Confirmed" items that haven't shown up in logs yet (RPC lag)
+            const mergedLocal = updatedLocal.filter(l => {
                 const isFound = onchainHashes.has(l.hash.toLowerCase());
                 const isRecent = Date.now() - l.timestamp < 3600000;
-                return !isFound && isRecent;
+                // Keep it if it's pending OR if it's confirmed locally but not yet indexed
+                return (!isFound && isRecent);
             });
 
-            localStorage.setItem(LEDGER_KEY, JSON.stringify(stillPending));
+            localStorage.setItem(LEDGER_KEY, JSON.stringify(mergedLocal));
 
-            const combined = [...stillPending, ...userOnchain];
+            const combined = [...mergedLocal, ...userOnchain];
             combined.sort((a, b) => {
                 if (a.status === "Pending" && b.status !== "Pending") return -1;
                 if (b.status === "Pending" && a.status !== "Pending") return 1;
@@ -111,8 +129,7 @@ export default function Dashboard() {
 
             setActivities(combined.slice(0, 15));
         } catch (e) {
-            console.error("Ledger Sync Error (likely RPC limit):", e);
-            // If the sliding window also fails, try a smaller one (last 5000 blocks)
+            console.error("Ledger Sync Error:", e);
             if (LEDGER_KEY) {
                 const local = JSON.parse(localStorage.getItem(LEDGER_KEY) || "[]");
                 setActivities(local.slice(0, 10));
@@ -186,7 +203,7 @@ export default function Dashboard() {
 
     const stats = [
         { label: "Total Value Locked (TVL)", val: totalAssets ? `${parseFloat(formatUnits(totalAssets, 18)).toFixed(2)} MTK` : "0.00 MTK", change: "VERIFIED", icon: TrendingUp },
-        { label: "Current Yield (APY)", val: yieldData ? `${(Number(yieldData.poolAApy) / 100).toFixed(2)}%` : "0.00%", change: yieldData ? `${(Number(yieldData.yieldDifference) / 100).toFixed(2)}% DIFF` : "...", icon: Percent },
+        { label: "Current Yield (APY)", val: yieldData ? `${(Number(yieldData.poolAApy) / 100).toFixed(2)}%` : "0.00%", change: yieldData ? `${(Number(yieldData.yieldDifference) / 100).toFixed(2)}% DIFF` : "...", icon: Percent, isLive: true },
         { label: "Vault Status", val: "OPTIMIZED", change: "REACTIVE", icon: Activity },
     ];
 
@@ -220,7 +237,8 @@ export default function Dashboard() {
                                 <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center group-hover:bg-white group-hover:text-black transition-all">
                                     <stat.icon className="w-5 h-5" />
                                 </div>
-                                <span className="text-[9px] font-bold px-2 py-1 rounded-md bg-white/10 text-white uppercase tracking-tighter">
+                                <span className="text-[9px] font-bold px-2 py-1 rounded-md bg-white/10 text-white uppercase tracking-tighter flex items-center gap-2">
+                                    {stat.isLive && <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse box-shadow-green" />}
                                     {stat.change}
                                 </span>
                             </div>

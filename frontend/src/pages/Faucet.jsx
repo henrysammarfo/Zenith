@@ -12,7 +12,7 @@ export default function Faucet() {
     const [txHash, setTxHash] = useState(null);
     const [timeLeft, setTimeLeft] = useState(0);
 
-    const { data: lastClaim } = useReadContract({
+    const { data: lastClaim, refetch: refetchLastClaim } = useReadContract({
         address: ASSET_ADDRESS,
         abi: ERC20_ABI,
         functionName: "lastClaimTime",
@@ -32,6 +32,7 @@ export default function Faucet() {
     useEffect(() => {
         if (isSuccess) {
             refetchBalance();
+            refetchLastClaim();
             setIsProcessing(false);
             setTxHash(null);
         }

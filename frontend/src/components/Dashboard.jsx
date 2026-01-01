@@ -30,7 +30,7 @@ export default function Dashboard() {
     const { data: allowance, refetch: refetchAllowance } = useReadContract({ address: ASSET_ADDRESS, abi: ERC20_ABI, functionName: "allowance", args: [address, ZENITH_VAULT_ADDRESS] });
 
     const { writeContractAsync } = useWriteContract();
-    const { isSuccess: isTxConfirmed } = useWaitForTransactionReceipt({ hash: txHash });
+    const { isSuccess: isTxConfirmed, data: receipt } = useWaitForTransactionReceipt({ hash: txHash });
 
     const fetchActivities = useCallback(async (isSilent = false) => {
         if (!publicClient || !address || !LEDGER_KEY) return;
@@ -146,13 +146,35 @@ export default function Dashboard() {
     }, [address, fetchActivities]);
 
     useEffect(() => {
-        if (isTxConfirmed) {
+        if (isTxConfirmed && receipt) {
+            // FORCE UPDATE: Immediately mark this specific hash as Confirmed in local storage
+            // This bypasses the RPC "getLogs" lag entirely for the just-finished transaction
+            if (LEDGER_KEY && txHash) {
+                const local = JSON.parse(localStorage.getItem(LEDGER_KEY) || "[]");
+                const updated = local.map(item => {
+                    if (item.hash.toLowerCase() === txHash.toLowerCase()) {
+                        return { ...item, status: "Confirmed", blockNumber: receipt.blockNumber.toString() };
+                    }
+                    return item;
+                });
+                localStorage.setItem(LEDGER_KEY, JSON.stringify(updated));
+                // Update state immediately so UI reflects it NOW
+                setActivities(prev => prev.map(item => {
+                    if (item.hash.toLowerCase() === txHash.toLowerCase()) {
+                        return { ...item, status: "Confirmed", blockNumber: receipt.blockNumber.toString() };
+                    }
+                    return item;
+                }));
+            }
+
             refetchVault(); refetchYields(); refetchAllocations(); refetchMtk(); refetchZth(); refetchAllowance();
+            // We still fetch activities to get any *other* updates, but our local one is already safe
             fetchActivities(true);
+
             if (lastTxType !== 'approve') setAmount("");
             setIsProcessing(false); setTxHash(null); setLastTxType(null);
         }
-    }, [isTxConfirmed, lastTxType]);
+    }, [isTxConfirmed, receipt, lastTxType, txHash, LEDGER_KEY]);
 
     const savePending = (hash, type, val) => {
         if (!LEDGER_KEY) return;

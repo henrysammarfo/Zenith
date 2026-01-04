@@ -17,6 +17,7 @@ Zenith implements a "Signal Repeater" architecture to overcome cross-chain state
 
 ## Key Features
 - **ERC4626 Compliant**: Standardized vault interface for seamless integration.
+- **Native Protocol Integration**: 100% compatible with existing Aave V3 and Compound V2/V3 interfaces.
 - **Bi-directional Rebalancing**: Moves funds from Aave → Compound or vice-versa.
 - **Configurable Strategy**: Rebalance thresholds and percentages are manageable via an on-chain `ConfigManager`.
 - **Security First**: Integrated pausing mechanisms and authorized reactive execution.

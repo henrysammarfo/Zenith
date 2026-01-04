@@ -13,10 +13,21 @@ Traditional cross-chain automation relies on **Keepers** (off-chain bots) or **O
 3. **Complexity**: Managing multi-chain private keys and gas for bots is an operational burden.
 
 **The Reactive Advantage:**
-- **Eliminating the "Keeper Middleman"**: Traditional automation requires off-chain bots (Keepers) that are either centralized or expensive to maintain. Zenith replaces these with a **Native Event-Driven Architecture** on the Reactive Network, ensuring that rebalancing triggers are as trustless as the protocols they manage.
-- **Atomic-Like Precision**: Because Reactive Contracts process logs in real-time, the "yield leakage" from laggy off-chain polling is minimized. Zenith reacts to APY shifts exactly when they are emitted by the lending protocols.
-- **Security-First Automation**: The `rnOnly` modifier ensures that only the verified ReactVM can trigger rebalances, preventing unauthorized liquidity movements while still allowing the protocol to be 100% autonomous.
-- **Emergency Resilience**: Integrated `pause()` and `rescueTokens()` functions in both the Vault and YieldMonitor allow for immediate human intervention if external lending protocols (Aave/Compound) experience black-swan events.
+- **Eliminating the "Keeper Middleman"**: Zenith replaces off-chain bots with a Native Event-Driven Architecture, ensuring trustless rebalancing.
+- **Protocol Compliance**: Unlike "custom pool" designs, Zenith is explicitly built to automate **Existing Lending Pools**. The architecture currently supports **Aave V3** and **Compound V2/V3** interfaces.
+- **Atomic-Like Precision**: Zenith reacts to APY shifts exactly when protocols emit their yield events.
+
+## Protocol Compatibility & Mainnet Readiness
+
+Zenith is designed for immediate production deployment upon official protocol support on Reactive Network.
+
+| Protocol | Version | Interface | Signal Event |
+| :--- | :--- | :--- | :--- |
+| **Aave** | V3 | `supply()`, `withdraw()` | `ReserveDataUpdated` (Topic 0: `0x804c9...`) |
+| **Compound** | V2/V3 | `mint()`, `redeemUnderlying()` | `Mint` / `AccrueInterest` |
+
+> [!NOTE]
+> For hackathon demonstration on Sepolia, Zenith utilizes **Signal Replication** via mock instances of these protocols. This allows us to manually trigger yield volatility to prove the **Reactive rebalancing logic** in real-time. The code is 1:1 compatible with the official Aave and Compound deployments.
 
 ## Deployment Log & Runbook
 

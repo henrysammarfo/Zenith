@@ -1,29 +1,34 @@
-# Zenith: Cross-Chain Yield Optimization Vault
+# Zenith: High-Fidelity Cross-Chain Yield Optimization
 
 ![Zenith Logo](frontend/public/logo.png)
 
-A production-grade lending automation vault powered by **Reactive Smart Contracts**. This vault autonomously rebalances liquidity between Aave V3 and Compound V2 on Ethereum Sepolia based on real-time yield signals processed on the Reactive Network (Lasna).
+## 🚀 Overview
+Zenith is a production-grade lending automation vault that leverages **Reactive Smart Contracts** to autonomously rebalance liquidity between major lending protocols (**Aave V3** and **Compound V2**) on Ethereum Sepolia. By utilizing the **Reactive Network (Lasna)**, Zenith eliminates the need for centralized off-chain keepers, providing a trustless, event-driven pipeline for yield optimization.
 
-## Project Overview
-
-Zenith implements a "Signal Repeater" architecture to overcome cross-chain state reading limitations:
-1.  **Direct Monitoring**: `YieldMonitor` (Lasna) subscribes to live lending pool events on Sepolia.
-2.  **Autonomous Rebalancing**: Real-time yield differentials trigger cross-chain callbacks that reallocate vault liquidity between Aave V3 and Compound V2.
-3.  **Verifiability**: Every rebalance and yield update is recorded on-chain and verifiable via the included Zenith Dashboard.
+## 🏗 Architecture
+Zenith follows a **"Signal Repeater"** model designed specifically for the Reactive Network:
+1.  **YieldMonitor (Reactive Contract)**: Deployed on Lasna, it subscribes to yield-changing events on Sepolia (e.g., `ReserveDataUpdated`).
+2.  **Signal Propagation**: When the Monitor detects a profitable yield differential, it emits a cross-chain **Callback** via the ReactVM.
+3.  **Local Audit & Rebalance**: The `CrossChainLendingVault` on Sepolia receives the callback, performs a local yield audit to verify the opportunity, and reallocates assets between underlying pools.
 
 > [!NOTE]
 > Zenith supports two environments: **Demonstration (Mock Pools)** for triggering yield shifts manually, and **Verification (Official Protocols)** for testing on live Aave V3 and Compound V2 deployments. Switch between them in the Dashboard header.
 
-## Architecture
-
-![Zenith Architecture](docs/architecture.png)
-
-## Key Features
-- **ERC4626 Compliant**: Standardized vault interface for seamless integration.
+## ✨ Key Features
+- **ERC-4626 Compliant**: Standardized vault interface for seamless integration.
+- **Trustless Automation**: Rebalancing is triggered by live on-chain logs, processed by Lasna, and executed on Sepolia without human intervention.
+- **Security-First Logic**: The Vault performs its own yield check upon receiving a signal, ensuring that "garbage input" cannot trigger a loss-making rebalance.
+- **Dynamic Configuration**: On-chain management of rebalance thresholds (basis points), percentage shifts, and emergency pause controls.
 - **Native Protocol Integration**: 100% compatible with existing Aave V3 and Compound V2/V3 interfaces.
-- **Bi-directional Rebalancing**: Moves funds from Aave → Compound or vice-versa.
-- **Configurable Strategy**: Rebalance thresholds and percentages are manageable via an on-chain `ConfigManager`.
-- **Security First**: Integrated pausing mechanisms and authorized reactive execution.
+
+## 🔍 Workflow Proof (The Zenith Cycle)
+To demonstrate production-grade reactivity, we have executed a full autonomous rebalancing cycle:
+1.  **Origin (APY Update)**: [0x9d713...6af](https://sepolia.etherscan.io/tx/0x9d71327038e267d81de1a5c4b94357f98a2ea8f6ccc4aa8e1c957f0249c5d6af)
+2.  **Reactive (Signal Emitted)**: [0xdc334...3be](https://lasna.blockscout.com/tx/0xdc3347f75f750c1825fa2b87f4749f50e854966e6012678696b940ce6f6631be)
+3.  **Destination (Vault Rebalance)**: [0x1f8dd...5c6](https://sepolia.etherscan.io/tx/0x1f8dd7866d8c17dfd8656c9cc8f120ed5eeeefce26355381e09e04cdc91f15c6)
+
+## Architecture Visualization
+![Zenith Architecture](docs/architecture.png)
 
 ## Deployment & Setup
 

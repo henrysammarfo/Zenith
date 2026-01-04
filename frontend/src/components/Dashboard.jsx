@@ -361,18 +361,18 @@ export default function Dashboard() {
                                 <div className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-1 flex items-center gap-2">
                                     <ShieldCheck className="w-3 h-3" /> Vault Shares (ZTH)
                                 </div>
-                                <p className="text-[9px] text-white/40 uppercase tracking-widest leading-relaxed">MTK is your asset. ZTH represents your ownership + yield. Withdraw anytime.</p>
+                                <p className="text-[9px] text-white/40 uppercase tracking-widest leading-relaxed">{currentConfig.ASSET_NAME} is your asset. ZTH represents your ownership + yield. Withdraw anytime.</p>
                             </div>
 
                             <div className="space-y-6">
                                 <div className="space-y-2">
                                     <div className="flex justify-between">
                                         <span className="text-[9px] font-bold uppercase tracking-widest text-white/30">Target Amount</span>
-                                        <span className="text-[9px] font-bold uppercase tracking-widest text-white/50">Balance: {activeTab === "deposit" ? parseFloat(formatUnits(mtkBalance || 0n, 18)).toFixed(2) : parseFloat(formatUnits(zthBalance || 0n, 18)).toFixed(2)} {activeTab === "deposit" ? "MTK" : "ZTH"}</span>
+                                        <span className="text-[9px] font-bold uppercase tracking-widest text-white/50">Balance: {activeTab === "deposit" ? parseFloat(formatUnits(mtkBalance || 0n, 18)).toFixed(2) : parseFloat(formatUnits(zthBalance || 0n, 18)).toFixed(2)} {activeTab === "deposit" ? currentConfig.ASSET_NAME : "ZTH"}</span>
                                     </div>
                                     <div className="relative group">
                                         <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-4 text-xl font-orbit font-bold text-white focus:border-white/30 transition-all outline-none" />
-                                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-white/20 uppercase tracking-widest">{activeTab === "deposit" ? "MTK" : "ZTH"}</span>
+                                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-white/20 uppercase tracking-widest">{activeTab === "deposit" ? currentConfig.ASSET_NAME : "ZTH"}</span>
                                     </div>
                                 </div>
 
@@ -390,7 +390,7 @@ export default function Dashboard() {
                         </div>
                         <div className="mt-auto space-y-4">
                             <button onClick={handleAction} disabled={!amount || isProcessing} className="w-full h-14 rounded-xl bg-white text-black font-black text-xs uppercase tracking-widest hover:bg-zenith-silver transition-all shadow-xl flex items-center justify-center gap-2 group disabled:opacity-50">
-                                <span>{isProcessing ? "Transacting..." : (activeTab === "deposit" ? ((!allowance || allowance < parseUnits(amount || "0", 18)) ? "Authorize MTK" : "Deposit MTK") : "Withdraw MTK")}</span>
+                                <span>{isProcessing ? "Transacting..." : (activeTab === "deposit" ? ((!allowance || allowance < parseUnits(amount || "0", 18)) ? `Authorize ${currentConfig.ASSET_NAME}` : `Deposit ${currentConfig.ASSET_NAME}`) : `Withdraw ${currentConfig.ASSET_NAME}`)}</span>
                                 <Wallet className="w-4 h-4" />
                             </button>
                             {isTxConfirmed && <div className="text-center text-[10px] font-bold text-green-500 uppercase tracking-widest flex items-center justify-center gap-1"><CheckCircle2 className="w-3 h-3" /> Confirmed</div>}

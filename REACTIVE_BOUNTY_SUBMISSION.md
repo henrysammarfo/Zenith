@@ -2,8 +2,7 @@
  - Reactive Bounties 2.0 Submission
 
 ## Overview
-Zenith implements a "Signal Repeater" architecture to overcome cross-chain state reading limitations:
-It autonomously monitors yield rates across multiple lending protocols (Aave V3 and Compound V2 mocks) on Ethereum Sepolia and reallocates liquidity to the highest-yielding pool using trustless cross-chain callbacks.
+Zenith is a production-grade lending automation vault that leverages **Reactive Smart Contracts** to autonomously rebalance liquidity between major lending protocols (**Aave V3** and **Compound V2**) on Ethereum Sepolia. By utilizing the **Reactive Network (Lasna)**, Zenith eliminates the need for centralized off-chain keepers, providing a trustless, event-driven pipeline for yield optimization.
 
 ## Why Reactive Contracts?
 
@@ -57,10 +56,9 @@ To demonstrate production-grade reactivity, we have executed multiple autonomous
 
 | Step | Action | Transaction Hash | Network |
 | :--- | :--- | :--- | :--- |
-| **1. Origin** | APY Update on Sepolia (Pool A Rate Change) | Emits `ReserveDataUpdated` event | Sepolia |
-| **2. Reactive** | YieldMonitor processes event, emits Callback | `0xe4f2b994d4cc7d` (latest) | Lasna |
-| **3. Reactive** | YieldMonitor processes event, emits Callback | `0x6df743e711187d` | Lasna |
-| **4. Destination** | Vault `checkYieldsAndRebalance()` called | Callback triggers rebalance | Sepolia |
+| **1. Origin** | APY Update on Sepolia (Pool A Rate Change) | `0x9d71327038e267d81de1a5c4b94357f98a2ea8f6ccc4aa8e1c957f0249c5d6af` | Sepolia |
+| **2. Reactive** | YieldMonitor processes event, emits Callback | `0xdc3347f75f750c1825fa2b87f4749f50e854966e6012678696b940ce6f6631be` | Lasna |
+| **3. Destination** | Vault `checkYieldsAndRebalance()` called | `0x1f8dd7866d8c17dfd8656c9cc8f120ed5eeeefce26355381e09e04cdc91f15c6` | Sepolia |
 
 ### Phase 4: Official Protocol Verification (Production Environment)
 To fulfill the bounty requirement for existing lending pools, we have deployed a parallel production-ready environment using official Sepolia assets and protocols.

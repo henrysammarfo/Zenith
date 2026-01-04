@@ -3,7 +3,8 @@ import { motion } from "framer-motion";
 import { Droplet, Timer, ShieldCheck, Wallet, ArrowRight, ExternalLink } from "lucide-react";
 import { useReadContract, useWriteContract, useAccount, useWaitForTransactionReceipt } from "wagmi";
 import { formatUnits, parseUnits } from "viem";
-import { ASSET_ADDRESS, ERC20_ABI } from "../config/constants";
+import { CONFIG, ERC20_ABI } from "../config/constants";
+const ASSET_ADDRESS = CONFIG.MOCK.ASSET;
 import { cn } from "../lib/utils";
 
 export default function Faucet() {

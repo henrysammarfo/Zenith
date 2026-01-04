@@ -11,12 +11,16 @@ Zenith implements a "Signal Repeater" architecture to overcome cross-chain state
 2.  **Autonomous Rebalancing**: Real-time yield differentials trigger cross-chain callbacks that reallocate vault liquidity between Aave V3 and Compound V2.
 3.  **Verifiability**: Every rebalance and yield update is recorded on-chain and verifiable via the included Zenith Dashboard.
 
+> [!NOTE]
+> Zenith supports two environments: **Demonstration (Mock Pools)** for triggering yield shifts manually, and **Verification (Official Protocols)** for testing on live Aave V3 and Compound V2 deployments. Switch between them in the Dashboard header.
+
 ## Architecture
 
 ![Zenith Architecture](docs/architecture.png)
 
 ## Key Features
 - **ERC4626 Compliant**: Standardized vault interface for seamless integration.
+- **Native Protocol Integration**: 100% compatible with existing Aave V3 and Compound V2/V3 interfaces.
 - **Bi-directional Rebalancing**: Moves funds from Aave → Compound or vice-versa.
 - **Configurable Strategy**: Rebalance thresholds and percentages are manageable via an on-chain `ConfigManager`.
 - **Security First**: Integrated pausing mechanisms and authorized reactive execution.

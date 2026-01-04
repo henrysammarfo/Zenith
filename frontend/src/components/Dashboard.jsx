@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { TrendingUp, Activity, Percent, ExternalLink, ShieldCheck, Wallet, ArrowDown, RefreshCw, CheckCircle2, Clock, Info } from "lucide-react";
 import { useReadContract, useWriteContract, useAccount, useWaitForTransactionReceipt, usePublicClient } from "wagmi";
 import { formatUnits, parseUnits, parseAbiItem } from "viem";
-import { ZENITH_VAULT_ADDRESS, ASSET_ADDRESS, YIELD_MONITOR_ADDRESS, POOL_A_ADDRESS, POOL_B_ADDRESS, VAULT_ABI, MONITOR_ABI, ERC20_ABI, START_BLOCK } from "../config/constants";
+import { ZENITH_VAULT_ADDRESS as MOCK_VAULT, ASSET_ADDRESS as MOCK_ASSET, POOL_A_ADDRESS, POOL_B_ADDRESS, VAULT_ABI, MONITOR_ABI, ERC20_ABI, START_BLOCK, CONFIG } from "../config/constants";
 import { cn } from "../lib/utils";
 import { useNavigate } from "react-router-dom";
 
@@ -11,6 +11,11 @@ export default function Dashboard() {
     const { address } = useAccount();
     const navigate = useNavigate();
     const publicClient = usePublicClient();
+
+    // Environment Toggle
+    const [env, setEnv] = useState("MOCK"); // "MOCK" or "OFFICIAL"
+    const currentConfig = CONFIG[env];
+
     const [amount, setAmount] = useState("");
     const [activeTab, setActiveTab] = useState("deposit");
     const [isProcessing, setIsProcessing] = useState(false);
@@ -19,15 +24,19 @@ export default function Dashboard() {
     const [isLoadingActivities, setIsLoadingActivities] = useState(false);
     const [lastTxType, setLastTxType] = useState(null);
 
-    const LEDGER_KEY = address ? `zenith_ledger_${address.toLowerCase()}` : null;
+    const LEDGER_KEY = address ? `zenith_ledger_${env}_${address.toLowerCase()}` : null;
+
+    // Dynamic Contract Addresses
+    const vaultAddr = currentConfig.VAULT;
+    const assetAddr = currentConfig.ASSET;
 
     // Contract Reads
-    const { data: totalAssets, refetch: refetchVault } = useReadContract({ address: ZENITH_VAULT_ADDRESS, abi: VAULT_ABI, functionName: "totalAssets" });
-    const { data: yieldData, refetch: refetchYields } = useReadContract({ address: ZENITH_VAULT_ADDRESS, abi: VAULT_ABI, functionName: "getYieldData" });
-    const { data: allocations, refetch: refetchAllocations } = useReadContract({ address: ZENITH_VAULT_ADDRESS, abi: VAULT_ABI, functionName: "getPoolAllocations" });
-    const { data: mtkBalance, refetch: refetchMtk } = useReadContract({ address: ASSET_ADDRESS, abi: ERC20_ABI, functionName: "balanceOf", args: [address] });
-    const { data: zthBalance, refetch: refetchZth } = useReadContract({ address: ZENITH_VAULT_ADDRESS, abi: VAULT_ABI, functionName: "balanceOf", args: [address] });
-    const { data: allowance, refetch: refetchAllowance } = useReadContract({ address: ASSET_ADDRESS, abi: ERC20_ABI, functionName: "allowance", args: [address, ZENITH_VAULT_ADDRESS] });
+    const { data: totalAssets, refetch: refetchVault } = useReadContract({ address: vaultAddr, abi: VAULT_ABI, functionName: "totalAssets" });
+    const { data: yieldData, refetch: refetchYields } = useReadContract({ address: vaultAddr, abi: VAULT_ABI, functionName: "getYieldData" });
+    const { data: allocations, refetch: refetchAllocations } = useReadContract({ address: vaultAddr, abi: VAULT_ABI, functionName: "getPoolAllocations" });
+    const { data: mtkBalance, refetch: refetchMtk } = useReadContract({ address: assetAddr, abi: ERC20_ABI, functionName: "balanceOf", args: [address] });
+    const { data: zthBalance, refetch: refetchZth } = useReadContract({ address: vaultAddr, abi: VAULT_ABI, functionName: "balanceOf", args: [address] });
+    const { data: allowance, refetch: refetchAllowance } = useReadContract({ address: assetAddr, abi: ERC20_ABI, functionName: "allowance", args: [address, vaultAddr] });
 
     const { writeContractAsync } = useWriteContract();
     const { isSuccess: isTxConfirmed, data: receipt } = useWaitForTransactionReceipt({ hash: txHash });
@@ -60,19 +69,19 @@ export default function Dashboard() {
 
             const [depositLogs, withdrawLogs, rebalanceLogs] = await Promise.all([
                 publicClient.getLogs({
-                    address: ZENITH_VAULT_ADDRESS,
+                    address: vaultAddr,
                     event: parseAbiItem('event Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares)'),
                     fromBlock,
                     toBlock: 'latest',
                 }),
                 publicClient.getLogs({
-                    address: ZENITH_VAULT_ADDRESS,
+                    address: vaultAddr,
                     event: parseAbiItem('event Withdraw(address indexed sender, address indexed receiver, address indexed owner, uint256 assets, uint256 shares)'),
                     fromBlock,
                     toBlock: 'latest',
                 }),
                 publicClient.getLogs({
-                    address: ZENITH_VAULT_ADDRESS,
+                    address: vaultAddr,
                     event: parseAbiItem('event Rebalanced(address indexed fromPool, address indexed toPool, uint256 amount)'),
                     fromBlock,
                     toBlock: 'latest',
@@ -195,20 +204,20 @@ export default function Dashboard() {
             if (activeTab === "deposit") {
                 if (!allowance || allowance < val) {
                     setLastTxType('approve');
-                    const hash = await writeContractAsync({ address: ASSET_ADDRESS, abi: ERC20_ABI, functionName: "approve", args: [ZENITH_VAULT_ADDRESS, val] });
+                    const hash = await writeContractAsync({ address: assetAddr, abi: ERC20_ABI, functionName: "approve", args: [vaultAddr, val] });
                     setTxHash(hash);
-                    savePending(hash, "Approve", `${amount} MTK`);
+                    savePending(hash, "Approve", `${amount} ${currentConfig.ASSET_NAME}`);
                 } else {
                     setLastTxType('deposit');
-                    const hash = await writeContractAsync({ address: ZENITH_VAULT_ADDRESS, abi: VAULT_ABI, functionName: "deposit", args: [val, address] });
+                    const hash = await writeContractAsync({ address: vaultAddr, abi: VAULT_ABI, functionName: "deposit", args: [val, address] });
                     setTxHash(hash);
-                    savePending(hash, "Deposit", `${amount} MTK`);
+                    savePending(hash, "Deposit", `${amount} ${currentConfig.ASSET_NAME}`);
                 }
             } else {
                 setLastTxType('withdraw');
-                const hash = await writeContractAsync({ address: ZENITH_VAULT_ADDRESS, abi: VAULT_ABI, functionName: "redeem", args: [val, address, address] });
+                const hash = await writeContractAsync({ address: vaultAddr, abi: VAULT_ABI, functionName: "redeem", args: [val, address, address] });
                 setTxHash(hash);
-                savePending(hash, "Withdraw", `${amount} MTK`);
+                savePending(hash, "Withdraw", `${amount} ${currentConfig.ASSET_NAME}`);
             }
         } catch (e) {
             console.error(e); setIsProcessing(false); setLastTxType(null);
@@ -217,14 +226,14 @@ export default function Dashboard() {
 
     const handleRebalance = async () => {
         try {
-            const hash = await writeContractAsync({ address: ZENITH_VAULT_ADDRESS, abi: VAULT_ABI, functionName: "checkYieldsAndRebalance" });
+            const hash = await writeContractAsync({ address: vaultAddr, abi: VAULT_ABI, functionName: "checkYieldsAndRebalance" });
             setTxHash(hash); setLastTxType('rebalance'); setIsProcessing(true);
             savePending(hash, "Rebalance", "System");
         } catch (e) { console.error(e); }
     };
 
     const stats = [
-        { label: "Total Value Locked (TVL)", val: totalAssets ? `${parseFloat(formatUnits(totalAssets, 18)).toFixed(2)} MTK` : "0.00 MTK", change: "VERIFIED", icon: TrendingUp },
+        { label: "Total Value Locked (TVL)", val: totalAssets ? `${parseFloat(formatUnits(totalAssets, 18)).toFixed(2)} ${currentConfig.ASSET_NAME}` : `0.00 ${currentConfig.ASSET_NAME}`, change: "VERIFIED", icon: TrendingUp },
         { label: "Current Yield (APY)", val: yieldData ? `${(Number(yieldData.poolAApy) / 100).toFixed(2)}%` : "0.00%", change: yieldData ? `${(Number(yieldData.yieldDifference) / 100).toFixed(2)}% DIFF` : "...", icon: Percent, isLive: true },
         { label: "Vault Status", val: "OPTIMIZED", change: "REACTIVE", icon: Activity },
     ];
@@ -244,10 +253,30 @@ export default function Dashboard() {
                             Alpha <span className="text-gradient">Vault</span>
                         </h2>
                     </div>
-                    <div className="flex items-center gap-4">
+                    <div className="flex flex-col md:flex-row items-center gap-4">
+                        <div className="flex p-1 bg-white/5 border border-white/10 rounded-xl">
+                            <button
+                                onClick={() => setEnv("MOCK")}
+                                className={cn(
+                                    "px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all",
+                                    env === "MOCK" ? "bg-white text-black" : "text-white/40 hover:text-white"
+                                )}
+                            >
+                                Demo
+                            </button>
+                            <button
+                                onClick={() => setEnv("OFFICIAL")}
+                                className={cn(
+                                    "px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all",
+                                    env === "OFFICIAL" ? "bg-blue-500 text-white" : "text-white/40 hover:text-white"
+                                )}
+                            >
+                                Official
+                            </button>
+                        </div>
                         <button onClick={() => navigate("/faucet")} className="px-4 py-2 rounded-full bg-white/5 border border-white/10 flex items-center gap-2 hover:bg-white/10 transition-colors">
                             <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-                            <span className="text-[10px] font-bold tracking-widest uppercase text-white/60">Request MTK Token</span>
+                            <span className="text-[10px] font-bold tracking-widest uppercase text-white/60">Demo Faucet</span>
                         </button>
                     </div>
                 </header>
@@ -274,13 +303,13 @@ export default function Dashboard() {
                     <div className="lg:col-span-2 premium-card flex flex-col">
                         <div className="flex items-center justify-between mb-8">
                             <h3 className="text-xs font-bold tracking-[0.3em] uppercase text-white/40">Portfolio Distribution</h3>
-                            <a href={`https://sepolia.etherscan.io/address/${ZENITH_VAULT_ADDRESS}`} target="_blank" className="text-[10px] uppercase font-bold text-white/20 hover:text-white transition-colors flex items-center gap-1" rel="noreferrer">
+                            <a href={`https://sepolia.etherscan.io/address/${vaultAddr}`} target="_blank" className="text-[10px] uppercase font-bold text-white/20 hover:text-white transition-colors flex items-center gap-1" rel="noreferrer">
                                 Explorer <ExternalLink className="w-3 h-3" />
                             </a>
                         </div>
                         <div className="space-y-10 flex-grow">
                             {allocations?.map((pool, i) => {
-                                const isPoolA = pool.poolAddress.toLowerCase() === POOL_A_ADDRESS.toLowerCase();
+                                const isPoolA = pool.poolAddress.toLowerCase() === currentConfig.POOL_A.toLowerCase();
                                 const poolName = isPoolA ? "Aave V3" : "Compound V2";
                                 return (
                                     <div key={i} className="space-y-4">

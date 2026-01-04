@@ -1,11 +1,32 @@
-export const ZENITH_VAULT_ADDRESS = "0x4e30c7578e27f3b66451d3b57277629d43df3c56";
-export const YIELD_MONITOR_ADDRESS = "0x06d7c3899B3C63fa69a9f25EE496b139A5eA1740";
-export const ASSET_ADDRESS = "0xc866e23c6c889a67fd1b86be9a4871b6f3427ced";
-export const POOL_A_ADDRESS = "0x16e4307a045b06b125446fe612860a98df51f245";
-export const POOL_B_ADDRESS = "0xf11a3c025b7ab4d0c9ba15c3f8957cfc5102965b";
-export const START_BLOCK = 7000000n; // Much safer range for Sepolia deployment
+export const CONFIG = {
+    MOCK: {
+        VAULT: "0x4e30c7578e27f3b66451d3b57277629d43df3c56",
+        MONITOR: "0x3830772Ec746270f79a65cd897cb16eA890759f5",
+        ASSET: "0xc866e23c6c889a67fd1b86be9a4871b6f3427ced",
+        POOL_A: "0x16e4307a045b06b125446fe612860a98df51f245",
+        POOL_B: "0xf11a3c025b7ab4d0c9ba15c3f8957cfc5102965b",
+        ASSET_NAME: "MTK",
+        COLOR: "text-white"
+    },
+    OFFICIAL: {
+        VAULT: "0xb00dEd35D013729c118419647F735B40C9823421",
+        MONITOR: "0x222639064B9E11F218c9F982025438Ba2Fea706B",
+        ASSET: "0x94A9d9ac8A2257646765261540A7007414bB3e9C", // Official Sepolia USDC
+        POOL_A: "0x6Ae43d3271ff6888e7Fc43Fd7321a503ff738951", // Official Aave V3 Pool
+        POOL_B: "0x39AA39c021dfbaE8faC545936693aC917d5E7563", // Official Compound V2 cUSDC
+        ASSET_NAME: "USDC",
+        COLOR: "text-blue-400"
+    }
+};
 
+export const START_BLOCK = 7000000n;
 
+// Legacy exports for backward compatibility if needed, but components should use CONFIG
+export const ZENITH_VAULT_ADDRESS = CONFIG.MOCK.VAULT;
+export const YIELD_MONITOR_ADDRESS = CONFIG.MOCK.MONITOR;
+export const ASSET_ADDRESS = CONFIG.MOCK.ASSET;
+export const POOL_A_ADDRESS = CONFIG.MOCK.POOL_A;
+export const POOL_B_ADDRESS = CONFIG.MOCK.POOL_B;
 
 // Proper JSON ABI format for viem/wagmi
 export const VAULT_ABI = [
